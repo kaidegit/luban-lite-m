@@ -1032,7 +1032,7 @@ __ALWAYS_STATIC_INLINE void __STOP(void)
  */
 __ALWAYS_STATIC_INLINE void __ISB(void)
 {
-    __ASM volatile("fence");
+    __ASM volatile("fence.i");
 }
 
 
@@ -1053,7 +1053,11 @@ __ALWAYS_STATIC_INLINE void __DSB(void)
  */
 __ALWAYS_STATIC_INLINE void __SYNC_IS(void)
 {
+#ifdef __riscv_xthead
     __ASM volatile("sync.i");
+#else
+    asm volatile (".long 0x01a0000b"); /* sync.i */
+#endif
 }
 
 /**
@@ -1062,7 +1066,11 @@ __ALWAYS_STATIC_INLINE void __SYNC_IS(void)
  */
 __ALWAYS_STATIC_INLINE void __ICACHE_IALL(void)
 {
+#ifdef __riscv_xthead
     __ASM volatile("icache.iall");
+#else
+    asm volatile (".long 0x0100000b"); /* icache.iall */
+#endif
 }
 
 /**
@@ -1072,7 +1080,13 @@ __ALWAYS_STATIC_INLINE void __ICACHE_IALL(void)
  */
 __ALWAYS_STATIC_INLINE void __ICACHE_IPA(uint32_t addr)
 {
+#ifdef __riscv_xthead
     __ASM volatile("icache.ipa %0" : : "r"(addr));
+#else
+    register unsigned long i asm("a0") = addr;
+    asm volatile (".long 0x0385000b"); /* icache.ipa a0 */
+    i = i;
+#endif
 }
 
 /**
@@ -1081,7 +1095,11 @@ __ALWAYS_STATIC_INLINE void __ICACHE_IPA(uint32_t addr)
  */
 __ALWAYS_STATIC_INLINE void __DCACHE_IALL(void)
 {
+#ifdef __riscv_xthead
     __ASM volatile("dcache.iall");
+#else
+    asm volatile (".long 0x0020000b"); /* dcache.iall */
+#endif
 }
 
 /**
@@ -1090,7 +1108,11 @@ __ALWAYS_STATIC_INLINE void __DCACHE_IALL(void)
  */
 __ALWAYS_STATIC_INLINE void __DCACHE_CALL(void)
 {
+#ifdef __riscv_xthead
     __ASM volatile("dcache.call");
+#else
+    asm volatile (".long 0x0010000b"); /* dcache.call */
+#endif
 }
 
 /**
@@ -1099,7 +1121,11 @@ __ALWAYS_STATIC_INLINE void __DCACHE_CALL(void)
  */
 __ALWAYS_STATIC_INLINE void __DCACHE_CIALL(void)
 {
+#ifdef __riscv_xthead
     __ASM volatile("dcache.ciall");
+#else
+    asm volatile (".long 0x0030000b"); /* dcache.ciall */
+#endif
 }
 
 /**
@@ -1109,7 +1135,13 @@ __ALWAYS_STATIC_INLINE void __DCACHE_CIALL(void)
  */
 __ALWAYS_STATIC_INLINE void __DCACHE_IPA(uint32_t addr)
 {
+#ifdef __riscv_xthead
     __ASM volatile("dcache.ipa %0" : : "r"(addr));
+#else
+    register unsigned long i asm("a0") = addr;
+    asm volatile (".long 0x02a5000b"); /* dcache.ipa a0 */
+    i = i;
+#endif
 }
 
 /**
@@ -1119,7 +1151,13 @@ __ALWAYS_STATIC_INLINE void __DCACHE_IPA(uint32_t addr)
  */
 __ALWAYS_STATIC_INLINE void __DCACHE_CPA(uint32_t addr)
 {
+#ifdef __riscv_xthead
     __ASM volatile("dcache.cpa %0" : : "r"(addr));
+#else
+    register unsigned long i asm("a0") = addr;
+    asm volatile (".long 0x0295000b"); /* dcache.cpa a0 */
+    i = i;
+#endif
 }
 
 /**
@@ -1129,7 +1167,13 @@ __ALWAYS_STATIC_INLINE void __DCACHE_CPA(uint32_t addr)
  */
 __ALWAYS_STATIC_INLINE void __DCACHE_CIPA(uint32_t addr)
 {
+#ifdef __riscv_xthead
     __ASM volatile("dcache.cipa %0" : : "r"(addr));
+#else
+    register unsigned long i asm("a0") = addr;
+    asm volatile (".long 0x02b5000b"); /* dcache.cipa a0 */
+    i = i;
+#endif
 }
 
 

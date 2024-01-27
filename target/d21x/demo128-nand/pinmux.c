@@ -339,6 +339,20 @@ struct aic_pinmux aic_pinmux_config[] = {
     {4, PIN_PULL_DIS, 3, "PE.13"},
 #endif
 #endif
+#ifdef AIC_USING_I2S0
+    {2, PIN_PULL_DIS, 3, "PE.8"},
+    {2, PIN_PULL_DIS, 3, "PE.9"},
+    {2, PIN_PULL_DIS, 3, "PE.10"},
+    {2, PIN_PULL_DIS, 3, "PE.11"},
+    {2, PIN_PULL_DIS, 3, "PE.12"},
+#endif
+#ifdef AIC_USING_I2S1
+    {2, PIN_PULL_DIS, 3, "PF.10"},
+    {2, PIN_PULL_DIS, 3, "PF.11"},
+    {2, PIN_PULL_DIS, 3, "PF.12"},
+    {2, PIN_PULL_DIS, 3, "PF.13"},
+    {2, PIN_PULL_DIS, 3, "PF.14"},
+#endif
 #ifdef AIC_USING_RTP
     {2, PIN_PULL_DIS, 3, "PA.8"},
     {2, PIN_PULL_DIS, 3, "PA.9"},

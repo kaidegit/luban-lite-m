@@ -20,13 +20,17 @@
 
 static int do_reset_boot(int argc, char *argv[])
 {
+#ifdef AIC_WDT_DRV
     wdt_init();
     printf("Going to reboot ...\n");
+#endif
 #ifdef AIC_WRI_DRV
     aic_set_reboot_reason(REBOOT_REASON_CMD_REBOOT);
 #endif
+#ifdef AIC_WDT_DRV
     wdt_expire_now();
     while(1);
+#endif
     return 0;
 }
 
