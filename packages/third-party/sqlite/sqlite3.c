@@ -11613,6 +11613,8 @@ SQLITE_PRIVATE void sqlite3HashClear(Hash*);
 
 /************** End of parse.h ***********************************************/
 /************** Continuing where we left off in sqliteInt.h ******************/
+#include <sys/time.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13773,10 +13775,10 @@ SQLITE_PRIVATE void sqlite3OsFileControlHint(sqlite3_file*,int,void*);
 #define SQLITE_FCNTL_DB_UNCHANGED 0xca093fa0
 SQLITE_PRIVATE int sqlite3OsSectorSize(sqlite3_file *id);
 SQLITE_PRIVATE int sqlite3OsDeviceCharacteristics(sqlite3_file *id);
-SQLITE_PRIVATE int sqlite3OsShmMap(sqlite3_file *,int,int,int,void volatile **);
-SQLITE_PRIVATE int sqlite3OsShmLock(sqlite3_file *id, int, int, int);
-SQLITE_PRIVATE void sqlite3OsShmBarrier(sqlite3_file *id);
-SQLITE_PRIVATE int sqlite3OsShmUnmap(sqlite3_file *id, int);
+//SQLITE_PRIVATE int sqlite3OsShmMap(sqlite3_file *,int,int,int,void volatile **);
+//SQLITE_PRIVATE int sqlite3OsShmLock(sqlite3_file *id, int, int, int);
+//SQLITE_PRIVATE void sqlite3OsShmBarrier(sqlite3_file *id);
+//SQLITE_PRIVATE int sqlite3OsShmUnmap(sqlite3_file *id, int);
 SQLITE_PRIVATE int sqlite3OsFetch(sqlite3_file *id, i64, int, void **);
 SQLITE_PRIVATE int sqlite3OsUnfetch(sqlite3_file *, i64, void *);
 
@@ -20237,6 +20239,8 @@ SQLITE_PRIVATE int sqlite3OsSectorSize(sqlite3_file *id){
 SQLITE_PRIVATE int sqlite3OsDeviceCharacteristics(sqlite3_file *id){
   return id->pMethods->xDeviceCharacteristics(id);
 }
+
+#if 0
 SQLITE_PRIVATE int sqlite3OsShmLock(sqlite3_file *id, int offset, int n, int flags){
   return id->pMethods->xShmLock(id, offset, n, flags);
 }
@@ -20256,6 +20260,7 @@ SQLITE_PRIVATE int sqlite3OsShmMap(
   DO_OS_MALLOC_TEST(id);
   return id->pMethods->xShmMap(id, iPage, pgsz, bExtend, pp);
 }
+#endif
 
 #if SQLITE_MAX_MMAP_SIZE>0
 /* The real implementation of xFetch and xUnfetch */
@@ -116665,7 +116670,7 @@ SQLITE_PRIVATE Select *sqlite3SelectNew(
   Expr *pLimit,         /* LIMIT value.  NULL means not used */
   Expr *pOffset         /* OFFSET value.  NULL means no offset */
 ){
-  Select *pNew;
+  static Select *pNew = NULL; /*use static just for avoid compiler error*/
   Select standin;
   pNew = sqlite3DbMallocRawNN(pParse->db, sizeof(*pNew) );
   if( pNew==0 ){
