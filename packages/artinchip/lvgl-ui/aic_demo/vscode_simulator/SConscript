@@ -6,7 +6,7 @@ group = []
 src = Glob('*.c')
 CPPPATH = [cwd]
 
-if (GetDepend('LPKG_USING_LVGL_VSCODE')):
+if (GetDepend('AIC_LVGL_VSCODE_DEMO')):
     list = os.listdir(cwd)
     for d in list:
         path = os.path.join(cwd, d)
