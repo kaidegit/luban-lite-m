@@ -39,6 +39,11 @@ void lv_user_gui_init(void)
 #if defined(AIC_LVGL_DEMO) && !defined(RT_USING_MODULE)
     aic_ui_init();
 #endif
+#if !defined(AIC_LVGL_DEMO) && !defined(RT_USING_MODULE)
+    /* No built-in demo selected: call the application's own UI entry */
+    extern void ui_init(void);
+    ui_init();
+#endif
 }
 
 #if defined KERNEL_RTTHREAD

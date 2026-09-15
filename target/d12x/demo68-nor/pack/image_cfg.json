@@ -6,9 +6,9 @@
             "env":        { "size": "128k" },
             "env_r":      { "size": "128k" },
             "userid":     { "size": "256k" }, // at least 16KB
-            "os":         { "size": "3m" },
-            "rodata":     { "size": "10m" },
-            "data":       { "size": "1m" }
+            "os":         { "size": "1536k" },
+            "os_r":       { "size": "1536k" },
+            "data":       { "size": "12288k" } // single RW fs partition (FAT), no A/B
         },
     },
     "image": {
@@ -54,13 +54,8 @@
                 "attr": ["mtd", "required"],
                 "part": ["os"]
             },
-            "rodata": {
-                "file": "rodata.fatfs",
-                "attr": ["mtd", "optional"],
-                "part": ["rodata"]
-            },
             "data": {
-                "file": "data.lfs",
+                "file": "data.fatfs",
                 "attr": ["mtd", "optional"],
                 "part": ["data"]
             },
