@@ -33,6 +33,18 @@ menu "Console"
         int "Console UART ID"
         range 0 8
         default 0
+
+    config AIC_BOOTLOADER_DOWNLOAD_KEY_PIN
+        string "Low active key pin to stay in download mode"
+        default ""
+        help
+            Pin name of the download key, e.g. "PA.1", empty to disable.
+            If this pin is detected low at boot, BootLoader skips booting
+            the application and waits for the host download tool instead.
+
+            Note: the key which keeps the device in BROM's upgrading mode
+            (system.upgmode in target/<chip>/<board>/pack/pbp_cfg.json) is
+            handled by PBP, it is a separate pin, no need to set it here.
 endmenu
 
 menu "Drivers"

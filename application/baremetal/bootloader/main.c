@@ -26,6 +26,7 @@
 #include <hal_syscfg.h>
 #include <ram_param.h>
 #include <hal_axicfg.h>
+#include <aic_hal_gpio.h>
 #ifdef AICUPG_LOG_BUFFER_SUPPORT
 #include <log_buf.h>
 #endif
@@ -120,6 +121,60 @@ void show_banner(void)
     printf("\ntinySPL [Built on %s %s]\n", __DATE__, __TIME__);
 }
 
+#ifndef AIC_BOOTLOADER_DOWNLOAD_KEY_PIN
+#define AIC_BOOTLOADER_DOWNLOAD_KEY_PIN ""
+#endif
+
+/* Pin function number of GPIO, 0 means the pin function is disabled */
+#define PIN_FUNC_GPIO 1
+
+/*
+ * Sample the download key(active low) at boot time.
+ *
+ * The key pin may be muxed to another function(e.g. UART RX), so switch it
+ * to GPIO input with pull-up temporarily, sample the level, then restore
+ * the original pin function.
+ */
+static int download_key_pressed(void)
+{
+    unsigned int group, pin, func, val;
+    int gpio, pull, low_cnt = 0, i;
+
+    if (strlen(AIC_BOOTLOADER_DOWNLOAD_KEY_PIN) == 0)
+        return 0;
+
+    gpio = hal_gpio_name2pin(AIC_BOOTLOADER_DOWNLOAD_KEY_PIN);
+    if (gpio < 0) {
+        pr_err("Invalid download key pin: %s\n", AIC_BOOTLOADER_DOWNLOAD_KEY_PIN);
+        return 0;
+    }
+    group = GPIO_GROUP(gpio);
+    pin = GPIO_GROUP_PIN(gpio);
+
+    hal_gpio_get_func(group, pin, &func);
+    pull = hal_gpio_get_pincfg(group, pin, GPIO_CHECK_PIN_GEN_PULL);
+    hal_gpio_set_func(group, pin, PIN_FUNC_GPIO);
+    hal_gpio_set_bias_pull(group, pin, PIN_PULL_UP);
+    hal_gpio_direction_input(group, pin);
+
+    /* Wait for the pad level to settle after the pin function switch */
+    aic_udelay(2000);
+
+    for (i = 0; i < 4; i++) {
+        hal_gpio_get_value(group, pin, &val);
+        if (val == 0)
+            low_cnt++;
+        aic_udelay(1000);
+    }
+
+    /* Restore the original pin config */
+    hal_gpio_set_func(group, pin, func);
+    if (pull >= 0)
+        hal_gpio_set_bias_pull(group, pin, pull);
+
+    return (low_cnt >= 3);
+}
+
 int main(void)
 {
     enum boot_device bd;
@@ -157,9 +212,19 @@ int main(void)
             break;
     }
     if (ctrlc < 0) {
+        if (download_key_pressed()) {
+            printf("Download key(%s) is pressed, stay in BootLoader and wait for download ...\n",
+                   AIC_BOOTLOADER_DOWNLOAD_KEY_PIN);
+            cont_boot = 0;
 #ifdef AICUPG_SUPPORT
-        cont_boot = bl_upgmode_detect(bd);
+            /* Wait for the host tool on the download port */
+            console_run_cmd("aicupg uart 0");
 #endif
+        } else {
+#ifdef AICUPG_SUPPORT
+            cont_boot = bl_upgmode_detect(bd);
+#endif
+        }
         /*
          * Set bootcmd string to console, bootloader will check and run bootcmd
          * first in console_loop
