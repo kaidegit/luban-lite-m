@@ -1,0 +1,17 @@
+[package]
+name = "aic-isp"
+version = "0.1.0"
+edition = "2021"
+description = "UART ISP tool for the ArtInChip Luban-Lite bootloader (aicupg protocol)"
+license = "Apache-2.0"
+
+[[bin]]
+name = "aic-isp"
+path = "src/main.rs"
+
+[dependencies]
+serialport = "4.8"
+
+[profile.release]
+lto = true
+strip = true
