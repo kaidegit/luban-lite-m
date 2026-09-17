@@ -21,7 +21,7 @@ static int g_count;
 
 static void btn_event_cb(lv_event_t *e)
 {
-    g_count += 2;
+    g_count += 3;
     lv_label_set_text_fmt(g_count_label, "Count: %d", g_count);
 }
 

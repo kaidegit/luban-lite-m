@@ -304,6 +304,7 @@
 | `tools/scripts/aic_build.py` | 构建核心逻辑 |
 | `tools/scripts/mk_image.py` | 镜像生成 |
 | `tools/scripts/gen_partition_table.py` | 分区表生成 |
+| `tools/aic-isp/` | 串口 ISP 上位机工具（Rust），预编译产物在 `bin/`，源码在 `src/`，详见其 README |
 
 ## 公共头文件
 

@@ -20,7 +20,12 @@
 cd tools/aic-isp
 cargo build --release
 # 产物：target/release/aic-isp（Windows 下为 aic-isp.exe）
+cp target/release/aic-isp bin/   # 更新 bin/ 下的预编译产物
 ```
+
+仓库的 `bin/` 下放有预编译好的可执行文件（当前为 macOS arm64 版 `bin/aic-isp`），可不经编译直接
+使用；下文示例中的 `aic-isp` 均指该可执行文件。其它平台（如 Windows）请自行编译，产物在
+`target/release/` 下。
 
 ## 使用
 

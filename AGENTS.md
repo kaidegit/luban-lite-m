@@ -35,18 +35,18 @@ Luban-Lite 是匠芯创(ArtInChip)的 RTOS SDK：
 
 **查看当前方案信息**：`scons --info`
 
-**串口 ISP 工具**：`tools/aic-isp/`（Rust），对停在下载模式（`aicupg uart 0`，按住下载键 PA1 上电）的板子烧写 SPI NOR flash，也能把文件载入内存并执行：
+**串口 ISP 工具**：`tools/aic-isp/`（Rust），对停在下载模式（`aicupg uart 0`，按住下载键 PA1 上电）的板子烧写 SPI NOR flash，也能把文件载入内存并执行。`bin/aic-isp` 是预编译好的可执行文件，可直接使用；改动源码后重新编译并更新它：
 
 ```sh
-cd tools/aic-isp && cargo build --release
+cd tools/aic-isp && cargo build --release && cp target/release/aic-isp bin/
 
 # 烧到分区起始地址（spl@0x0、os@0x100000、data@0x400000 ...），--verify 可回读校验
-./target/release/aic-isp -p COM7 --bin bootloader.aic@0x0
-./target/release/aic-isp -p COM7 --isp-baud 3000000 --verify --bin d12x_os.itb@0x100000
+./bin/aic-isp -p COM7 --bin bootloader.aic@0x0
+./bin/aic-isp -p COM7 --isp-baud 3000000 --verify --bin d12x_os.itb@0x100000
 
 # 烧完自动复位启动新固件（复位前松开下载键），或载入内存并执行
-./target/release/aic-isp -p COM7 --reset --bin d12x_os.itb@0x100000
-./target/release/aic-isp -p COM7 --ram --bin app.bin@0x40000000 --exec 0x40000000
+./bin/aic-isp -p COM7 --reset --bin d12x_os.itb@0x100000
+./bin/aic-isp -p COM7 --ram --bin app.bin@0x40000000 --exec 0x40000000
 ```
 
 分区表由设备返回（`GET_PARTITION_TABLE`），工具只允许写分区起始地址：BootLoader 的 FWC 写入
@@ -75,7 +75,7 @@ cd tools/aic-isp && cargo build --release
 | `target/` | 板级配置 | `{chip}/{board}/defconfig` |
 | `application/` | 应用层 | `rt-thread/`, `freertos/`, `baremetal/` |
 | `tools/scripts/` | 构建脚本 | `aic_build.py` |
-| `tools/aic-isp/` | 串口 ISP 上位机工具（Rust，需先 `cargo build`） | `src/device.rs`, `src/proto.rs` |
+| `tools/aic-isp/` | 串口 ISP 上位机工具（Rust，预编译产物在 `bin/`） | `src/device.rs`, `src/proto.rs` |
 
 ## 四级抽象模型
 
