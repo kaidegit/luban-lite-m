@@ -9,6 +9,7 @@ import os
 import sys
 import re
 import json
+import platform
 import subprocess
 
 aic_scripts = sys.argv[0]
@@ -161,11 +162,15 @@ def generate_cpio_bin(datadir, cfgfile, bindir):
     if sys.platform == "win32":
         mkenvcmd += ".exe"
 
-    cmd = [mkenvcmd, "-s", str(size), "-o", outfile, ota_info_file]
-
-    ret = subprocess.run(cmd, subprocess.PIPE)
-    if ret.returncode != 0:
-        sys.exit(1)
+    if platform.system() in ('Linux', 'Windows'):
+        cmd = [mkenvcmd, "-s", str(size), "-o", outfile, ota_info_file]
+        ret = subprocess.run(cmd, subprocess.PIPE)
+        if ret.returncode != 0:
+            sys.exit(1)
+    else:
+        # no prebuilt mkenvimage for this platform, use the python port
+        from mk_image import mkenvimage_python
+        mkenvimage_python(outfile, ota_info_file, size, False)
 
 
 os.chdir(prj_out_dir)

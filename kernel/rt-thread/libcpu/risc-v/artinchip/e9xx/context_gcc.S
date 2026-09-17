@@ -71,7 +71,7 @@ rt_hw_context_switch_to:
     /* enable mexstatus SPUSHEN */
 #ifdef CONFIG_THEAD_EXT_SPUSHEN
     li      t0, 0x10000
-    csrs    mexstatus, t0
+    csrs    0x7e1, t0  /* mexstatus */
 #endif
 
     /* set software interrupt */

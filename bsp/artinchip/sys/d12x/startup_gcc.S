@@ -136,7 +136,7 @@ save_boot_params_ret:
     ori     a0, a0, 3
     csrw    mtvec, a0
     la      a0, __Vectors
-    csrw    mtvt, a0
+    csrw    0x307, a0  /* mtvt */
 
     la      sp, g_top_irqstack
 #ifdef CONFIG_THEAD_EXT_SPSWAPEN

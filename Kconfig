@@ -30,15 +30,21 @@ choice
     default PRJ_RV_TOOLCHAIN_V2_6_1
 
     config PRJ_RV_TOOLCHAIN_V2_6_1
-        bool "RISC-V Toolchain V2.6.1"
+        bool "RISC-V Toolchain V2.6.1 (with XuanTie ext)"
+    config PRJ_RV_TOOLCHAIN_V2_8_1
+        bool "RISC-V Toolchain V2.8.1 (with XuanTie ext)"
     config PRJ_RV_TOOLCHAIN_V3_2_0
-        bool "RISC-V Toolchain V3.2.0"
+        bool "RISC-V Toolchain V3.2.0 (with XuanTie ext)"
+    config PRJ_RV_TOOLCHAIN_UPSTREAM
+        bool "Upstream GCC, no XuanTie ext (e.g. xpack riscv-none-elf-gcc)"
 endchoice
 
 config PRJ_TOOLCHAIN_VER
     string
     default "V2.6.1" if PRJ_RV_TOOLCHAIN_V2_6_1
+    default "V2.8.1" if PRJ_RV_TOOLCHAIN_V2_8_1
     default "V3.2.0" if PRJ_RV_TOOLCHAIN_V3_2_0
+    default "upstream" if PRJ_RV_TOOLCHAIN_UPSTREAM
 
 endmenu
 

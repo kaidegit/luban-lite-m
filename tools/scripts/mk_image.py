@@ -23,6 +23,13 @@ from aic_private_resource import (  # noqa: E402
     parse_config as _priv_parse_config,
     build_private_data as _priv_build,
 )
+# The bundled tools/scripts/Cryptodome ships Linux/Windows native modules
+# only; prefer a pip-installed pycryptodomex (has modules for this platform)
+import site  # noqa: E402
+if platform.system() not in ('Linux', 'Windows'):
+    for _sp in site.getsitepackages():
+        if os.path.isdir(_sp):
+            sys.path.insert(0, _sp)
 from collections import namedtuple  # noqa: E402
 from collections import OrderedDict  # noqa: E402
 from Cryptodome.PublicKey import RSA  # noqa: E402
@@ -2660,6 +2667,71 @@ def aic_create_parts_for_env(cfg):
     return part_str
 
 
+def mkenvimage_python(outfile, infile, datasize, redundant):
+    """Pure-python port of u-boot mkenvimage (for platforms without the
+    prebuilt Linux/Windows binaries)."""
+    import zlib
+    padbyte = 0xff
+    datasize = int(datasize)
+    envsize = datasize - 4 - (1 if redundant else 0)
+    env = bytearray([padbyte]) * envsize
+    with open(infile, 'rb') as f:
+        filebuf = f.read()
+    filesize = len(filebuf)
+    fp = 0
+    ep = 0
+    while fp < filesize and ep < envsize - 1:
+        c = filebuf[fp]
+        if c == 0x0A:  # '\n'
+            if fp == 0 or filebuf[fp - 1] == 0x0A:
+                pass  # skip empty lines
+            elif filebuf[fp - 1] == 0x5C:  # '\\': embedded newline
+                ep -= 1
+                env[ep] = 0x0A
+                ep += 1
+            else:  # end of a variable
+                env[ep] = 0
+                ep += 1
+        elif (fp == 0 or filebuf[fp - 1] == 0x0A) and c == 0x23:  # '#'
+            while True:
+                fp += 1
+                if fp >= filesize or filebuf[fp] == 0x0A:
+                    break
+        else:
+            env[ep] = c
+            ep += 1
+        fp += 1
+    for p in range(fp, filesize):  # trailing junk check
+        if filebuf[p] == 0x0A:
+            if p == 0 or filebuf[p - 1] == 0x0A:
+                continue
+        elif (p == 0 or filebuf[p - 1] == 0x0A) and filebuf[p] == 0x23:
+            while p < filesize and filebuf[p] != 0x0A:
+                p += 1
+        else:
+            print('The environment file is too large for the target'
+                  ' environment storage')
+            sys.exit(1)
+    if ep == 0 or env[ep - 1] != 0:
+        env[ep] = 0
+        ep += 1
+        if ep >= envsize:
+            print('The environment file is too large for the target'
+                  ' environment storage')
+            sys.exit(1)
+        env[ep] = 0
+    else:
+        env[ep] = 0
+    crc = zlib.crc32(bytes(env)) & 0xFFFFFFFF
+    out = bytearray(datasize)
+    out[0:4] = crc.to_bytes(4, 'little')
+    if redundant:
+        out[4] = 1
+    out[4 + (1 if redundant else 0):datasize] = env
+    with open(outfile, 'wb') as f:
+        f.write(bytes(out))
+
+
 def uboot_env_create_image(srcfile, outfile, size, part_str, redund, script_dir):
     tmpfile = srcfile + ".part.tmp"
     fs = open(srcfile, "r+")
@@ -2679,9 +2751,13 @@ def uboot_env_create_image(srcfile, outfile, size, part_str, redund, script_dir)
         cmd = [mkenvcmd, "-r", "-s", str(size), "-o", outfile, tmpfile]
     else:
         cmd = [mkenvcmd, "-s", str(size), "-o", outfile, tmpfile]
-    ret = subprocess.run(cmd, subprocess.PIPE)
-    if ret.returncode != 0:
-        sys.exit(1)
+    if platform.system() in ('Linux', 'Windows'):
+        ret = subprocess.run(cmd, subprocess.PIPE)
+        if ret.returncode != 0:
+            sys.exit(1)
+    else:
+        # no prebuilt mkenvimage for this platform, use the python port
+        mkenvimage_python(outfile, tmpfile, size, "enable" in redund)
 
 
 def get_pre_process_cfg(cfg):

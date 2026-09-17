@@ -8,6 +8,8 @@
 #
 
 import os
+import sys
+import argparse
 from menuconfig import get_config_val, get_text_base
 
 

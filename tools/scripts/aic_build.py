@@ -194,7 +194,7 @@ def apply_defconfig(aic_root, defconfig):
 
     dst = os.path.join(aic_root, '.config')
     shutil.copy(src, dst)
-    sys.path.append(os.path.join(aic_root, 'kernel/rt-thread/tools'))
+    sys.path.insert(0, os.path.join(aic_root, 'kernel/rt-thread/tools'))
 
     # Should generate .Kconfig.prj before apply defconfig, because project depends on this file.
     mk_kconfig_prj(aic_root, src)
@@ -689,14 +689,14 @@ def list_size_cmd(aic_root, prj_chip, prj_board, prj_kernel, prj_app, prj_defcon
     list_size = GetOption('list_size')
     if list_size:
         # size
-        gcc_size = os.path.join(aic_root, 'toolchain/bin/riscv64-unknown-elf-size')
+        chip_path = os.path.join(aic_root, './bsp/artinchip/sys/' + prj_chip)
+        sys.path.append(chip_path)
+        import rtconfig
+        gcc_size = os.path.join(aic_root, 'toolchain/bin/' + rtconfig.PREFIX + 'size')
         # obj foler
         prj_name = prj_defconfig.replace('_defconfig', '')
         prj_out_dir = os.path.join(aic_root, 'output/' + prj_name)
         # target
-        chip_path = os.path.join(aic_root, './bsp/artinchip/sys/' + prj_chip)
-        sys.path.append(chip_path)
-        import rtconfig
         target = os.path.join(prj_out_dir, 'images', rtconfig.SOC + '.' + rtconfig.TARGET_EXT)
         # cmd
         p = []
@@ -1123,6 +1123,10 @@ def distclean_cmd(aic_root, prj_chip, prj_board, prj_kernel, prj_app, prj_defcon
 # check & prepare toolchain
 def chk_prepare_toolchain(aic_root, prj_chip, prj_board, prj_kernel, prj_app, prj_defconfig):
     config_file = os.path.join(aic_root, '.config')
+    if platform.system() not in ('Linux', 'Windows'):
+        # No toolchain auto-download for this OS; use toolchain/bin as-is
+        pr_info('Skip toolchain auto-prepare on ' + platform.system())
+        return
     if get_config(config_file, 'CONFIG_ARCH_CSKY'):
         if platform.system() == 'Linux':
             toolchain_name = 'csky-elf-noneabiv2-tools-x86_64-newlib'
@@ -1757,7 +1761,7 @@ def chk_prj_config(aic_root):
     update_defconfig(aic_root)
 
     # update 'rtconfig.h'
-    sys.path.append(os.path.join(aic_root, 'kernel/rt-thread/tools'))
+    sys.path.insert(0, os.path.join(aic_root, 'kernel/rt-thread/tools'))
     from menuconfig import mk_rtconfig
     mk_rtconfig(".config")
 

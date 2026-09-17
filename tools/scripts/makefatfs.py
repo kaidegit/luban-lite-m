@@ -103,6 +103,188 @@ def run_cmd(cmdstr):
         sys.exit(1)
 
 
+FAT_ATTR_DIR = 0x10
+FAT_ATTR_ARCHIVE = 0x20
+
+
+def fat83_name(name):
+    name = name.upper()
+    if '.' in name:
+        base, ext = name.rsplit('.', 1)
+    else:
+        base, ext = name, ''
+    for c in base + ext:
+        if ord(c) <= 0x20 or ord(c) >= 0x7f or c in '"*+,./:;<=>?[\\]|':
+            raise Exception(
+                'filename "{}" is not 8.3, mtools is needed for long names'
+                ' on macOS (brew install mtools)'.format(name))
+    if not 1 <= len(base) <= 8 or len(ext) > 3:
+        raise Exception(
+            'filename "{}" is not 8.3, mtools is needed for long names'
+            ' on macOS (brew install mtools)'.format(name))
+    return (base.ljust(8) + ext.ljust(3)).encode('ascii')
+
+
+def fat_dir_entry(name83, attr, first, size):
+    e = bytearray(32)
+    e[0:11] = name83
+    e[11] = attr
+    e[26:28] = first.to_bytes(2, 'little')
+    e[28:32] = size.to_bytes(4, 'little')
+    return bytes(e)
+
+
+def write_fat_image(outimg, srcdir, imgsiz, sector_siz, cluster, volab):
+    """Minimal FAT12/FAT16 image builder for macOS (no mtools).
+
+    Matches the geometry used by mformat on Linux: 512B sectors,
+    `cluster` sectors per cluster, 2 FATs, 512 root entries.
+    """
+    total_sect = int(imgsiz // sector_siz)
+    rsvd = 1
+    nfats = 2
+    root_ent = 512
+    rootdir_sect = (root_ent * 32 + sector_siz - 1) // sector_siz
+
+    # Select FAT12/FAT16 the same way FatFs/mformat do: by cluster count
+    fat_sz = 1
+    while True:
+        data_sect = total_sect - rsvd - nfats * fat_sz - rootdir_sect
+        nclus = data_sect // cluster
+        fat_bits = 12 if nclus < 4085 else 16
+        entry_siz = 1.5 if fat_bits == 12 else 2
+        need = int((nclus + 2) * entry_siz + sector_siz - 1) // sector_siz
+        if need <= fat_sz:
+            break
+        fat_sz += 1
+        if fat_sz > total_sect // 4:
+            raise Exception('FAT geometry error, image too small?')
+
+    img = bytearray(imgsiz)
+    fat_off = rsvd * sector_siz
+    root_off = fat_off + nfats * fat_sz * sector_siz
+    data_off = root_off + rootdir_sect * sector_siz
+    free_clu = [2]
+
+    def set_fat(idx, val):
+        if fat_bits == 12:
+            o = fat_off + idx * 3 // 2
+            if idx % 2 == 0:
+                img[o] = val & 0xFF
+                img[o + 1] = (img[o + 1] & 0xF0) | ((val >> 8) & 0x0F)
+            else:
+                img[o] = (img[o] & 0x0F) | ((val << 4) & 0xF0)
+                img[o + 1] = (val >> 4) & 0xFF
+        else:
+            o = fat_off + idx * 2
+            img[o:o + 2] = val.to_bytes(2, 'little')
+
+    def clu_off(c):
+        return data_off + (c - 2) * cluster * sector_siz
+
+    def alloc_chain(n):
+        first = free_clu[0]
+        if first + n - 2 > nclus:
+            raise Exception('FAT image is full')
+        eof = 0xFFF if fat_bits == 12 else 0xFFFF
+        for i in range(n):
+            set_fat(free_clu[0], eof if i == n - 1 else free_clu[0] + 1)
+            free_clu[0] += 1
+        return first
+
+    def write_chain(first, data):
+        clusize = cluster * sector_siz
+        n = max(1, (len(data) + clusize - 1) // clusize)
+        for i in range(n):
+            chunk = data[i * clusize:(i + 1) * clusize]
+            img[clu_off(first + i):clu_off(first + i) + len(chunk)] = chunk
+
+    # The nested-dir case is handled by a two-pass recursion below; root-only
+    # content is the common case for fs images.
+    def build(path):
+        items = []
+        if os.path.exists(path):
+            for nm in sorted(os.listdir(path)):
+                items.append(os.path.join(path, nm))
+        return items
+
+    def emit_items(items):
+        """Emit a flat list of files (sub-dirs one level deep supported)."""
+        out = bytearray()
+        for fp in items:
+            nm = os.path.basename(fp)
+            if os.path.isdir(fp):
+                sub_items = build(fp)
+                sub_ents = bytearray()
+                for s in sub_items:
+                    if os.path.isdir(s):
+                        raise Exception(
+                            'nested sub-dirs deeper than 1 level are not'
+                            ' supported by the macOS FAT builder')
+                    sub_ents += emit_file(s, os.path.basename(s))
+                clusize = cluster * sector_siz
+                n = max(1, (len(sub_ents) + 64 + clusize - 1) // clusize)
+                first = alloc_chain(n)
+                dot = fat_dir_entry(b'.          ', FAT_ATTR_DIR, first, 0)
+                dotdot = fat_dir_entry(b'..         ', FAT_ATTR_DIR, 0, 0)
+                data = dot + dotdot + bytes(sub_ents)
+                data = data[:26] + first.to_bytes(2, 'little') + data[28:]
+                write_chain(first, data)
+                out += fat_dir_entry(fat83_name(nm), FAT_ATTR_DIR, first, 0)
+            else:
+                out += emit_file(fp, nm)
+        return out
+
+    def emit_file(fp, nm):
+        with open(fp, 'rb') as f:
+            content = f.read()
+        clusize = cluster * sector_siz
+        n = max(1, (len(content) + clusize - 1) // clusize)
+        first = alloc_chain(n)
+        write_chain(first, content)
+        return fat_dir_entry(fat83_name(nm), FAT_ATTR_ARCHIVE, first,
+                             len(content))
+
+    root_ents = emit_items(build(srcdir))
+    if len(root_ents) > root_ent * 32:
+        raise Exception('too many root entries for FAT image')
+    img[root_off:root_off + len(root_ents)] = root_ents
+
+    set_fat(0, 0xFF8 if fat_bits == 12 else 0xFFF8)
+    set_fat(1, 0xFFF if fat_bits == 12 else 0xFFFF)
+    fat_bytes = fat_sz * sector_siz
+    for copy in range(1, nfats):
+        copy_off = fat_off + copy * fat_bytes
+        img[copy_off:copy_off + fat_bytes] = img[fat_off:fat_off + fat_bytes]
+
+    # boot sector
+    bs = bytearray(sector_siz)
+    bs[0:3] = b'\xEB\x3C\x90'
+    bs[3:11] = b'MSDOS5.0'
+    bs[11:13] = sector_siz.to_bytes(2, 'little')
+    bs[13] = cluster
+    bs[14:16] = rsvd.to_bytes(2, 'little')
+    bs[16] = nfats
+    bs[17:19] = root_ent.to_bytes(2, 'little')
+    if total_sect < 0x10000:
+        bs[19:21] = total_sect.to_bytes(2, 'little')
+    else:
+        bs[32:36] = total_sect.to_bytes(4, 'little')
+    bs[21] = 0xF8
+    bs[22:24] = fat_sz.to_bytes(2, 'little')
+    bs[36] = 0x80
+    bs[38] = 0x29
+    bs[39:43] = (0x20250916).to_bytes(4, 'little')
+    label = 'NO NAME    ' if volab == 'default' else volab.upper().ljust(11)
+    bs[43:54] = label.encode('ascii')[:11]
+    bs[54:62] = ('FAT{:2d}   '.format(fat_bits)).encode('ascii')
+    bs[510:512] = b'\x55\xAA'
+    img[0:sector_siz] = bs
+
+    with open(outimg, 'wb') as f:
+        f.write(img)
+
+
 def gen_fatfs(tooldir, srcdir, outimg, volab, imgsiz, sector_siz, cluster):
     sector_cnt = int(imgsiz / sector_siz)
     if platform.system() == 'Linux':
@@ -147,6 +329,11 @@ def gen_fatfs(tooldir, srcdir, outimg, volab, imgsiz, sector_siz, cluster):
         # gen sparse format
         img2simg = '{}img2simg.exe {} {}.sparse 1024'.format(tooldir, outimg, outimg)
         run_cmd(img2simg)
+
+    elif platform.system() == 'Darwin':
+        # macOS: mtools/newfs_msdos are not usable on plain files, build
+        # the FAT12/16 image with the built-in pure-python writer
+        write_fat_image(outimg, srcdir, imgsiz, sector_siz, cluster, volab)
 
 
 def round_pow2(x):
@@ -348,6 +535,7 @@ def main(args):
     elif platform.system() == 'Windows':
         fatupdate = '{}fatupdate.exe {}'.format(args.tooldir, args.outfile)
         run_cmd(fatupdate)
+    # Darwin: fatupdate is a Linux binary, skip it
     if strip_siz:
         if platform.system() == 'Linux':
             truncate = 'truncate -s {} {}'.format(minimal_siz, args.outfile)
@@ -355,6 +543,9 @@ def main(args):
         elif platform.system() == 'Windows':
             truncate = '{}truncate.exe {} {}'.format(args.tooldir, args.outfile, minimal_siz)
             run_cmd(truncate)
+        elif platform.system() == 'Darwin':
+            with open(args.outfile, 'r+b') as f:
+                f.truncate(int(minimal_siz))
 
 
 if __name__ == "__main__":

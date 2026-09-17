@@ -25,6 +25,10 @@ if  CROSS_TOOL == 'gcc':
         EXEC_PATH = os.path.normpath(fcwd + '/../../../../toolchain/bin/')
     elif platform.system() == 'Windows':
         EXEC_PATH = os.path.normpath(fcwd + '/../../../../toolchain/bin/')
+    elif platform.system() == 'Darwin':
+        # No toolchain auto-download on macOS; point toolchain/bin at a
+        # local toolchain install (e.g. Xuantie-900 gcc) via symlink.
+        EXEC_PATH = os.path.normpath(fcwd + '/../../../../toolchain/bin/')
 else:
     print ('Please make sure your toolchains is GNU GCC!')
     exit(0)
@@ -59,7 +63,27 @@ if os.environ.get('PRJ_OUT_DIR'):
 
 if PLATFORM == 'gcc':
     # toolchains
-    PREFIX  = 'riscv64-unknown-elf-'
+    # The toolchain flavor is chosen by the 'Toolchain' option in menuconfig
+    # (CONFIG_PRJ_TOOLCHAIN_VER, passed here as env): XuanTie V2.6.1/V3.2.0
+    # GCC supports the private _xtheade extension and T-Head-only options,
+    # upstream GCC (e.g. xpack riscv-none-elf-gcc) supports none of them.
+    # An old .config without the option falls back to probing EXEC_PATH.
+    PRJ_TOOLCHAIN_VER = os.getenv('PRJ_TOOLCHAIN_VER')
+    if not PRJ_TOOLCHAIN_VER:
+        PRJ_TOOLCHAIN_VER = 'V2.6.1'
+    else:
+        PRJ_TOOLCHAIN_VER = PRJ_TOOLCHAIN_VER.replace('"', '')
+
+    if PRJ_TOOLCHAIN_VER == 'upstream':
+        THEAD_EXT = False
+    elif PRJ_TOOLCHAIN_VER in ('V2.6.1', 'V2.8.1', 'V3.2.0'):
+        THEAD_EXT = True
+    elif os.path.exists(os.path.join(EXEC_PATH, 'riscv-none-elf-gcc')) and \
+            not os.path.exists(os.path.join(EXEC_PATH, 'riscv64-unknown-elf-gcc')):
+        THEAD_EXT = False
+    else:
+        THEAD_EXT = True
+    PREFIX    = 'riscv-none-elf-' if not THEAD_EXT else 'riscv64-unknown-elf-'
     CC      = PREFIX + 'gcc'
     CXX     = PREFIX + 'g++'
     AS      = PREFIX + 'gcc'
@@ -73,21 +97,19 @@ if PLATFORM == 'gcc':
     LD_SCRIPT       = 'gcc_aic.ld'
     QEMU_LD_SCRIPT  = 'gcc_qemu.ld'
 
-    PRJ_TOOLCHAIN_VER = os.getenv('PRJ_TOOLCHAIN_VER')
-    if not PRJ_TOOLCHAIN_VER:
-        PRJ_TOOLCHAIN_VER = 'V2.6.1'
-    else:
-        PRJ_TOOLCHAIN_VER = PRJ_TOOLCHAIN_VER.replace('"', '')
-
-    if PRJ_TOOLCHAIN_VER == 'V2.6.1':
+    if not THEAD_EXT:
+        # Upstream binutils need explicit zicsr/zifencei for csr*/fence.i
+        ISA_TAG = '_zicsr_zifencei'
+    elif PRJ_TOOLCHAIN_VER == 'V2.6.1':
         ISA_TAG = ''
     else:
         ISA_TAG = '_zifencei'
+    THEAD_TAG = '_xtheade' if THEAD_EXT else ''
 
     if CPUNAME == 'e906fdp' or CPUNAME == 'e907fdp':
         DEVICE = ' -march=rv32imafdcpzpsfoperand' + ISA_TAG + '_xtheade -mabi=ilp32d'
         TOOLCHAIN_LIB = 'rv32imafdc' + ISA_TAG + '_xtheade'
-        M_DEVICE = ' -march=rv32imafdc -mabi=ilp32d'
+        M_DEVICE = ' -march=rv32imafdc' + ISA_TAG + THEAD_TAG + ' -mabi=ilp32d'
         M_TOOLCHAIN_LIB = 'rv32imafdc'
     if CPUNAME == 'e906fp' or CPUNAME == 'e907fp':
         DEVICE = ' -march=rv32imafcpzpsfoperand' + ISA_TAG + '_xtheade -mabi=ilp32f'
@@ -102,13 +124,22 @@ if PLATFORM == 'gcc':
 
     B_CFLAGS  += ' -c -g -ffunction-sections -fdata-sections -Wall -mcmodel=medany'
     B_AFLAGS  += ' -c' + ' -x assembler-with-cpp' + ' -D__ASSEMBLY__'
-    CFLAGS  = DEVICE + B_CFLAGS + CFLAGS_DBG + ' -mno-dup-loop-header'
+    if THEAD_EXT:
+        DUPLOOP = ' -mno-dup-loop-header'
+        C_STD = ''
+    else:
+        # -mno-dup-loop-header is T-Head-only; upstream GCC 15 defaults to
+        # C23 which breaks legacy SDK code, pin a legacy C dialect instead
+        DUPLOOP = ''
+        C_STD = ' -std=gnu11'
+    CFLAGS  = DEVICE + B_CFLAGS + CFLAGS_DBG + DUPLOOP + C_STD
     AFLAGS  = DEVICE + B_AFLAGS + AFLAGS_DBG
-    CXXFLAGS = CFLAGS
+    CXXFLAGS = DEVICE + B_CFLAGS + CFLAGS_DBG + DUPLOOP
     CFLAGS_GCC14 = ' -Wno-error=implicit-function-declaration -Wno-error=int-conversion \
                     -Wno-error=incompatible-pointer-types -Wno-error=return-mismatch \
                     -Wno-error=declaration-missing-parameter-type -Wno-error=implicit-int'
-    if PRJ_TOOLCHAIN_VER == 'V2.6.1':
+    if THEAD_EXT and PRJ_TOOLCHAIN_VER in ('V2.6.1', 'V2.8.1'):
+        # GCC 10 rejects unknown -Wno-error= options as hard errors
         CFLAGS_GCC14 = ''
     CFLAGS += CFLAGS_GCC14
 
@@ -121,7 +152,7 @@ if PLATFORM == 'gcc':
     LPATH   = ''
 
     # module setting
-    M_PREFIX  = 'riscv-none-embed-'
+    M_PREFIX  = 'riscv-none-embed-' if THEAD_EXT else PREFIX
     M_CC      = M_PREFIX + 'gcc'
     M_CXX     = M_PREFIX + 'g++'
     M_AS      = M_PREFIX + 'gcc'

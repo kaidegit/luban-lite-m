@@ -30,12 +30,12 @@
 #define ARCH_RISCV_DSP
 #endif
 
-#ifdef __riscv_xthead
-#ifdef __riscv_xtheade
+/* D12x interrupt handlers use the T-Head hardware stack protocol, including
+ * when an upstream assembler emits ipush/ipop through raw instruction words.
+ * These are SoC capabilities, not compiler capabilities.
+ */
 #define CONFIG_THEAD_EXT_SPUSHEN
 #define CONFIG_THEAD_EXT_SPSWAPEN
-#endif
-#endif
 
 #endif // __riscv
 #endif // AIC_CONFIG_H__
