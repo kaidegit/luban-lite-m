@@ -82,6 +82,8 @@ def main(args):
         cmdstr += 'mklittlefs '
     elif platform.system() == 'Windows':
         cmdstr += 'mklittlefs.exe '
+    elif platform.system() == 'Darwin':
+        cmdstr += 'mklittlefs-darwin '
     cmdstr += '-c {} '.format(inputdir)
     cmdstr += '-b {} '.format(args.blocksize)
     cmdstr += '-p {} '.format(args.pagesize)

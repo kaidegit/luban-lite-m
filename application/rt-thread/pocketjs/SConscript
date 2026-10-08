@@ -1,0 +1,39 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+from building import *
+
+cwd     = GetCurrentDir()
+src     = Glob('*.c')
+CPPPATH = [cwd, ]
+
+CFLAGS = ' -c -ffunction-sections'
+
+# The guest package is linked into the firmware image (generated/pocket_bin.c
+# in the PocketJS checkout); no filesystem image carries it.
+group   = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH, CFLAGS=CFLAGS)
+
+# POCKETJS_ROOT names the PocketJS checkout that carries hosts/aic. The
+# environment overrides the CONFIG_POCKETJS_ROOT default, matching how
+# tools/aic.ts build invokes scons.
+import os
+pocketjs_root = os.environ.get('POCKETJS_ROOT')
+if not pocketjs_root:
+    try:
+        pocketjs_root = GetConfigValue('CONFIG_POCKETJS_ROOT').strip('"')
+    except (NameError, KeyError):
+        pocketjs_root = ''
+if pocketjs_root:
+    pocketjs_host = os.path.join(pocketjs_root, 'hosts', 'aic', 'SConscript')
+    if os.path.isfile(pocketjs_host):
+        group = group + SConscript(pocketjs_host)
+    else:
+        print('pocketjs: POCKETJS_ROOT=%s has no hosts/aic/SConscript' % pocketjs_root)
+else:
+    print('pocketjs: POCKETJS_ROOT is not set (export POCKETJS_ROOT or set CONFIG_POCKETJS_ROOT)')
+
+list = os.listdir(cwd)
+for item in list:
+    if os.path.isfile(os.path.join(cwd, item, 'SConscript')):
+        group = group + SConscript(os.path.join(item, 'SConscript'))
+
+Return('group')

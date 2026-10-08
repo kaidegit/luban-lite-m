@@ -6,9 +6,9 @@
             "env":        { "size": "128k" },
             "env_r":      { "size": "128k" },
             "userid":     { "size": "256k" }, // at least 16KB
-            "os":         { "size": "1536k" },
-            "os_r":       { "size": "1536k" },
-            "data":       { "size": "12288k" } // single RW fs partition (FAT), no A/B
+            "os":         { "size": "3072k" },
+            "os_r":       { "size": "3072k" },
+            "data":       { "size": "9216k" } // spare RW partition, unused by PocketJS
         },
     },
     "image": {
@@ -53,11 +53,6 @@
                 "file": "d12x_os.itb",
                 "attr": ["mtd", "required"],
                 "part": ["os"]
-            },
-            "data": {
-                "file": "data.fatfs",
-                "attr": ["mtd", "optional"],
-                "part": ["data"]
             },
         },
     },

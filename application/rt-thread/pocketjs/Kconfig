@@ -1,0 +1,9 @@
+menu "PocketJS"
+config POCKETJS_ROOT
+    string "PocketJS checkout with hosts/aic"
+    default ""
+    help
+        Path to the PocketJS repository. tools/aic.ts build passes it as
+        the POCKETJS_ROOT environment variable, which overrides this
+        option. The application includes hosts/aic/SConscript from there.
+endmenu

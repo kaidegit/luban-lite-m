@@ -114,13 +114,25 @@ static rt_err_t gt911_get_info(struct rt_i2c_client *dev, struct rt_touch_device
     info->range_x = (out_info[2] << 8) | out_info[1];
     info->range_y = (out_info[4] << 8) | out_info[3];
 
-    rt_device_control((rt_device_t)touch, RT_TOUCH_CTRL_GET_DYNAMIC_ROTATE, &angle);
-    if (angle == 90 || angle == 270) {
-        info->range_x = (rt_int16_t)AIC_TOUCH_REPORT_Y_COORDINATE;
-        info->range_y = (rt_int16_t)AIC_TOUCH_REPORT_X_COORDINATE;
-    } else {
-        info->range_x = (rt_int16_t)AIC_TOUCH_REPORT_X_COORDINATE;
-        info->range_y = (rt_int16_t)AIC_TOUCH_REPORT_Y_COORDINATE;
+    /* Probe does not program GT911_CFG_TBL. Without coordinate transforms,
+     * read_point returns the controller's resident coordinates, whose range
+     * can differ from the Kconfig defaults. Keep the range read above. */
+    rt_uint8_t transformed = 0;
+    rt_device_control((rt_device_t)touch, RT_TOUCH_CTRL_GET_DYNAMIC_FLAG, &transformed);
+#if defined(AIC_TOUCH_X_FLIP) || defined(AIC_TOUCH_Y_FLIP) || \
+    defined(AIC_TOUCH_90_DEGREE_ROTATION) || defined(AIC_TOUCH_270_DEGREE_ROTATION) || \
+    defined(AIC_TOUCH_CROP)
+    transformed = 1;
+#endif
+    if (transformed) {
+        rt_device_control((rt_device_t)touch, RT_TOUCH_CTRL_GET_DYNAMIC_ROTATE, &angle);
+        if (angle == 90 || angle == 270) {
+            info->range_x = (rt_int16_t)AIC_TOUCH_REPORT_Y_COORDINATE;
+            info->range_y = (rt_int16_t)AIC_TOUCH_REPORT_X_COORDINATE;
+        } else {
+            info->range_x = (rt_int16_t)AIC_TOUCH_REPORT_X_COORDINATE;
+            info->range_y = (rt_int16_t)AIC_TOUCH_REPORT_Y_COORDINATE;
+        }
     }
 
     info->point_num = out_info[5] & 0x0f;

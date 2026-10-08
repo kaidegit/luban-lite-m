@@ -10,6 +10,7 @@
 extern "C" {
 #endif
 #include <stdbool.h>
+#include <stdint.h>
 
 #define CONSOLE_OK        (0)
 #define CONSOLE_ERROR     (-1)
