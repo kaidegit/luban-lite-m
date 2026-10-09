@@ -6,7 +6,8 @@
 
 - **烧写 SPI NOR flash**：把文件写入 flash 的某个分区，走 BootLoader 的 FWC（固件组件）流程，
   带 CRC32 校验与烧写结果检查
-- `--verify`：烧写后把数据读回并逐字节比对
+- `--verify`：烧写后让设备计算分区内容的 CRC32 并与文件比对（`GET_MEDIA_CRC`，一条命令完成，
+  不回传数据）；`--verify=readback` 改为读回逐字节比对并可定位首个差异字节
 - `--reset`：全部完成后复位开发板，让 BootLoader 直接启动刚烧进去的应用
 - `--ram`：把文件下载到内存（RAM）而不是 flash，可配合 `--exec` 直接运行
 - `--bin <FILE@ADDR>`：裸二进制 + flash 偏移（必须是某个分区的起始地址）
@@ -39,8 +40,11 @@ aic-isp -p COM7 --bin bootloader.aic@0x0
 # 烧写应用镜像（os 分区，偏移 0x100000），并用 3 Mbps 提速
 aic-isp -p COM7 -b 3000000 --bin d12x_os.itb@0x100000
 
-# 烧写后读回校验
+# 烧写后校验（比对 flash 内容的 CRC32，秒级完成）
 aic-isp -p COM7 --verify --bin data.fatfs@0x400000
+
+# 读回逐字节比对（慢，用于定位差异字节）
+aic-isp -p COM7 --verify=readback --bin data.fatfs@0x400000
 
 # 烧写完自动复位，直接跑新固件（复位前记得松开下载键）
 aic-isp -p COM7 --verify --reset --bin d12x_os.itb@0x100000
@@ -59,7 +63,8 @@ aic-isp -p COM7 --ram --bin app.bin@0x40000000 --exec 0x40000000
 | `--bin <FILE@ADDR>` | 裸二进制与 flash 偏移（分区起始地址），如 `bootloader.aic@0x0` |
 | `--hex <FILE>` | Intel HEX 文件，地址取自文件内容（按 flash 偏移处理） |
 | `--ram` | 把 `--bin`/`--hex` 载入内存，此时地址是 RAM 地址 |
-| `--verify` | 烧写后通过 `READ_FWC_DATA` 读回比对 |
+| `--verify` | 烧写后通过 `GET_MEDIA_CRC` 让设备计算分区内容的 CRC32 并与文件比对 |
+| `--verify=readback` | 改为通过 `READ_FWC_DATA` 读回逐字节比对，失败时报告首个差异偏移 |
 | `--reset` | 全部完成后通过 `RUN_SHELL_STR` 执行控制台命令 `reset`，设备由 WDT 复位并启动应用 |
 | `--exec <ADDR>` | 全部完成后调用该地址的代码（RAM 操作） |
 | `-v, --verbose` | 在 stderr 上打印协议细节（帧、CSW、分区表等），便于定位问题 |
@@ -89,7 +94,9 @@ aic-isp -p COM7 --ram --bin app.bin@0x40000000 --exec 0x40000000
 - 校验手段：每帧 CRC16 + ACK、每 32 KiB 一包的命令状态（CSW）、设备对已收数据计算的 CRC32
   （`GET_FWC_CRC`，工具会与本文件的 CRC32 比对）、`GET_FWC_BURN_RESULT`。
   BootLoader 编译时开启了 `AICUPG_SINGLE_TRANS_BURN_CRC32_VERIFY`，每包写入后会读回比对，
-  但失败只打印日志（升级模式下控制台输出被关闭，主机看不到），需要确定性验证时请加 `--verify`。
+  但失败只打印日志（升级模式下控制台输出被关闭，主机看不到），需要确定性验证时请加
+  `--verify`：它用 `GET_MEDIA_CRC` 让设备对 flash 分区内容计算 CRC32，与本文件 CRC32 比对，
+  2 MiB 镜像秒级完成；要逐字节证据时用 `--verify=readback`。
 - 烧写前工具会先发送 `image.info` 组件，让 BootLoader 探测 flash 并注册 MTD 分区；随后用
   `GET_BLOCK_SIZE` 确认设备确实切到了 flash 模式（仍处于 RAM 模式时块大小为 1，工具会报错），
   避免"数据被静默丢弃但命令成功"的情况。

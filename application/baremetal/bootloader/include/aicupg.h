@@ -37,6 +37,7 @@ extern "C" {
 #define UPG_PROTO_CMD_SET_UART_ARGS       0x19
 #define UPG_PROTO_CMD_GET_STORAGE_GEOME   0x1A
 #define UPG_PROTO_CMD_ERASE_STORAGE       0x1B
+#define UPG_PROTO_CMD_GET_MEDIA_CRC       0x1C
 #define UPG_PROTO_CMD_INVALID             0xFF
 
 #define UPG_PROTO_TYPE    0x01

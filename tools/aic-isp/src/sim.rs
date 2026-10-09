@@ -147,6 +147,8 @@ pub struct Sim {
     read_done: u64,
     read_size: u64,
     read_start: u64,
+    /// The CRC32 computed in the RESP state of GET_MEDIA_CRC.
+    pending_crc: Option<u32>,
     pub faults: Vec<String>,
 }
 
@@ -209,6 +211,7 @@ impl Sim {
             read_done: 0,
             read_size: 0,
             read_start: 0,
+            pending_crc: None,
             faults: Vec::new(),
         };
 
@@ -796,8 +799,9 @@ impl Sim {
                 }
                 clen
             }
-            proto::cmd::READ_FWC_DATA => {
-                // read_fwc_data_cmd_write_input_data(): struct media_partition
+            proto::cmd::READ_FWC_DATA | proto::cmd::GET_MEDIA_CRC => {
+                // read_fwc_data_cmd_write_input_data() /
+                // get_media_crc_cmd_write_input_data(): struct media_partition
                 let mut clen = 0usize;
                 if self.cmd_state == CmdState::Start {
                     self.cmd_state = CmdState::Arg;
@@ -811,7 +815,9 @@ impl Sim {
                     let start = match self.partition_start(&name) {
                         Some(start) => start,
                         None => {
-                            self.fault(format!("MTD {name} part not found for a read"));
+                            self.fault(format!(
+                                "MTD {name} part not found for a read"
+                            ));
                             return 0;
                         }
                     };
@@ -1039,6 +1045,38 @@ impl Sim {
                         self.cmd_state = CmdState::End;
                     }
                     return len;
+                }
+                siz
+            }
+            proto::cmd::GET_MEDIA_CRC => {
+                // get_media_crc_cmd_read_output_data(): the CRC32 of the
+                // partition content is computed in the RESP state, then
+                // answered as a 4 byte transfer.
+                let mut siz = 0usize;
+                if self.cmd_state == CmdState::Start {
+                    self.cmd_state = CmdState::Resp;
+                }
+                if self.cmd_state == CmdState::Resp {
+                    let mut crc = 0u32;
+                    for i in 0..self.read_size {
+                        let at = (self.read_start + i) as u32;
+                        let byte = *self.flash.get(&at).unwrap_or(&0xFF);
+                        crc = fwc::crc32_fold(crc, &[byte]);
+                    }
+                    let header = resp_header(cmd, proto::RESP_OK, 4);
+                    self.trans_buf[..16].copy_from_slice(&header);
+                    siz = 16;
+                    self.pending_crc = Some(crc);
+                    self.cmd_state = CmdState::DataOut;
+                }
+                if siz == len {
+                    return siz;
+                }
+                if self.cmd_state == CmdState::DataOut {
+                    let crc = self.pending_crc.take().unwrap_or(0);
+                    self.trans_buf[0..4].copy_from_slice(&crc.to_le_bytes());
+                    siz += 4;
+                    self.cmd_state = CmdState::End;
                 }
                 siz
             }

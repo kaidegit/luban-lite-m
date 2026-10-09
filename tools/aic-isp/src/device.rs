@@ -418,6 +418,66 @@ impl<L: Link> Device<L> {
         self.collect_read(len, FLASH_CSW_TIMEOUT)
     }
 
+    /// Compute the CRC32 of the first `len` bytes of the partition that
+    /// starts at `offset`, on the device (GET_MEDIA_CRC).
+    ///
+    /// The bootloader answers like the GET_FWC_* value commands: the response
+    /// header announces a 4 byte transfer, the CRC follows in its own.
+    pub fn partition_crc(&mut self, offset: u64, len: usize) -> Result<u32, String> {
+        if len == 0 {
+            return Ok(0);
+        }
+        let partition = self.partition_at(offset)?;
+        let args = fwc::media_partition(MEDIA_TYPE, MEDIA_DEV_ID, &partition.name, len as u64);
+
+        self.send_cmd_header(proto::cmd::GET_MEDIA_CRC, args.len() as u32)?;
+        self.transfer_out(&args, FLASH_CSW_TIMEOUT)?
+            .ok_or_else(|| "the device did not accept the CRC request".to_string())?
+            .check("the device rejected the CRC request")?;
+
+        // The device reads and hashes the partition before it answers. A
+        // bootloader without this command never answers at all.
+        let resp = self.read_resp_header(proto::cmd::GET_MEDIA_CRC).map_err(|e| {
+            format!(
+                "{e} (a bootloader without the GET_MEDIA_CRC command fails like this too; \
+                 update it, or verify with --verify=readback)"
+            )
+        })?;
+        if resp.status != proto::RESP_OK {
+            return Err(format!(
+                "the device could not read partition '{}' to verify it",
+                partition.name
+            ));
+        }
+        if resp.data_length != 4 {
+            return Err(format!(
+                "unexpected CRC response: the header announces {} bytes",
+                resp.data_length
+            ));
+        }
+
+        self.begin_read(4)?;
+        let value = self.collect_read(4, FLASH_CSW_TIMEOUT)?;
+        Ok(u32::from_le_bytes(value[0..4].try_into().unwrap()))
+    }
+
+    /// Verify the content of the partition that starts at `offset` against
+    /// `data`, without reading the data back over the wire.
+    ///
+    /// The device computes the CRC32 of the programmed flash range and this
+    /// compares it against the CRC32 of `data`, the same end-to-end check the
+    /// bootloader applies to the transfer itself while programming.
+    pub fn verify_flash(&mut self, offset: u64, data: &[u8]) -> Result<(), String> {
+        let expect = fwc::crc32(data);
+        let actual = self.partition_crc(offset, data.len())?;
+        if actual != expect {
+            return Err(format!(
+                "verification failed: the device computed CRC 0x{actual:08X}, the file is 0x{expect:08X}"
+            ));
+        }
+        Ok(())
+    }
+
     /// The partition that starts exactly at `offset`.
     fn partition_at(&mut self, offset: u64) -> Result<fwc::FlashPartition, String> {
         let partitions = self.partitions()?;
@@ -1073,6 +1133,36 @@ mod tests {
 
         let read_back = dev.read_flash(offset, data.len()).expect("read back");
         assert_eq!(read_back, data);
+    }
+
+    #[test]
+    fn verifies_the_programmed_flash_by_crc() {
+        let (mut dev, sim) = connected();
+        let data: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
+        let offset = 0x10_0000u64; // the os partition
+
+        dev.write_flash(offset, &data, &mut |_| {}).expect("program");
+        dev.verify_flash(offset, &data).expect("verify");
+        assert!(sim.borrow().fault_free(), "{:?}", sim.borrow().faults);
+    }
+
+    #[test]
+    fn detects_a_flash_content_that_drifted() {
+        let (mut dev, sim) = connected();
+        let data = vec![0xA5u8; 5000];
+        let offset = 0x10_0000u64; // the os partition
+
+        dev.write_flash(offset, &data, &mut |_| {}).expect("program");
+        // Flip one bit in the middle of the programmed range.
+        sim.borrow_mut().flash.insert(offset as u32 + 2500, 0xA4);
+
+        let err = dev.verify_flash(offset, &data).unwrap_err();
+        assert!(err.contains("verification failed"), "{err}");
+        assert!(err.contains("the device computed CRC"), "{err}");
+
+        // The session survives a failed verification.
+        dev.verify_flash(offset, &data).unwrap_err();
+        assert!(sim.borrow().fault_free(), "{:?}", sim.borrow().faults);
     }
 
     #[test]

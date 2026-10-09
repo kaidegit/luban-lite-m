@@ -203,6 +203,8 @@ void nor_fwc_start(struct fwc_info *fwc)
 
     return;
 err:
+    /* Leave no dangling pointer: callers check fwc->priv == NULL. */
+    fwc->priv = NULL;
     if (priv)
         free(priv);
 }

@@ -10,6 +10,7 @@
 #include <malloc.h>
 #include <aicupg.h>
 #include <aic_core.h>
+#include <aic_crc32.h>
 #include <partition_table.h>
 #include "upg_internal.h"
 
@@ -1191,6 +1192,256 @@ static void read_fwc_data_cmd_end(struct upg_cmd *cmd)
 }
 
 /*
+ * UPG_PROTO_CMD_GET_MEDIA_CRC:
+ *   -> [CMD HEADER]
+ *   -> [MEDIA_PARTITION]
+ *   <- [RESP HEADER]
+ *   <- [PARTITION CRC32]
+ *
+ * Compute the CRC32 of the first part.size bytes of the selected partition,
+ * reading them back from the media, without transferring the data itself. The
+ * host compares the value against the CRC of the file it programmed, which
+ * verifies the flash content over one command instead of a full read back.
+ */
+
+/* Chunk size with which fwc_media_crc() reads the media. */
+#define MEDIA_CRC_CHUNK (32 * 1024)
+
+static s32 fwc_media_crc(struct fwc_info *fwc)
+{
+    enum upg_dev_type dev_type = get_current_device_type();
+    u8 *buf;
+    u64 left;
+    u32 crc = 0;
+    s32 ret = 0;
+
+    /* nor_fwc_start() and friends leave priv NULL when they failed. */
+    if (fwc->priv == NULL)
+        return -1;
+
+    buf = aicupg_malloc_align(MEDIA_CRC_CHUNK, CACHE_LINE_SIZE);
+    if (buf == NULL)
+        return -1;
+
+    left = fwc->mpart.part.size;
+    while (ret >= 0 && left > 0) {
+        s32 n = (left > MEDIA_CRC_CHUNK) ? MEDIA_CRC_CHUNK : (s32)left;
+
+        switch (dev_type) {
+#if defined(AICUPG_MMC_ARTINCHIP)
+            case UPG_DEV_TYPE_MMC:
+                ret = mmc_fwc_data_read(fwc, buf, n);
+                break;
+#endif
+#if defined(AICUPG_NAND_ARTINCHIP)
+            case UPG_DEV_TYPE_RAW_NAND:
+            case UPG_DEV_TYPE_SPI_NAND:
+                ret = nand_fwc_data_read(fwc, buf, n);
+                break;
+#endif
+#if defined(AICUPG_NOR_ARTINCHIP)
+            case UPG_DEV_TYPE_SPI_NOR:
+                ret = nor_fwc_data_read(fwc, buf, n);
+                break;
+#endif
+            case UPG_DEV_TYPE_RAM:
+            case UPG_DEV_TYPE_UNKNOWN:
+            default:
+                ret = -1;
+                break;
+        }
+
+        if (ret < n) {
+            pr_err("Read media for CRC failed at 0x%llx.\n", left);
+            ret = -1;
+            break;
+        }
+        /*
+         * Keep the running CRC in a local: the *_fwc_data_read() family
+         * resets fwc->calc_partition_crc to fwc->meta.crc on every call,
+         * so folding into it would hash only the last chunk.
+         */
+        crc = crc32(crc, buf, ret);
+        left -= ret;
+    }
+
+    aicupg_free_align(buf);
+    fwc->calc_partition_crc = crc;
+    return ret < 0 ? ret : 0;
+}
+
+static void get_media_crc_cmd_start(struct upg_cmd *cmd, s32 cmd_data_len)
+{
+    pr_debug("%s\n", __func__);
+    if (cmd->cmd != UPG_PROTO_CMD_GET_MEDIA_CRC)
+        return;
+
+    if (fwc_info_data == NULL) {
+        fwc_info_data = malloc(sizeof(struct fwc_info));
+        if (fwc_info_data == NULL) {
+            pr_debug("%s fwc_info_data = NULL\n", __func__);
+            return;
+        }
+    }
+
+    memset(fwc_info_data, 0, sizeof(struct fwc_info));
+    cmd->priv = fwc_info_data;
+    cmd_state_init(cmd, CMD_STATE_START);
+}
+
+static s32 get_media_crc_cmd_write_input_data(struct upg_cmd *cmd, u8 *buf,
+                                              s32 len)
+{
+    struct fwc_info *fwc;
+    s32 clen = 0, siz = 0;
+
+    pr_debug("%s\n", __func__);
+    fwc = (struct fwc_info *)cmd->priv;
+    if (fwc == NULL)
+        return 0;
+
+    if (cmd->state == CMD_STATE_START)
+        cmd_state_set_next(cmd, CMD_STATE_ARG);
+
+    if (cmd->state == CMD_STATE_ARG) {
+        siz = sizeof(struct media_partition);
+        if (len < siz)
+            return 0;
+        memcpy(&(fwc->mpart), buf, siz);
+        clen += siz;
+        cmd_state_set_next(cmd, CMD_STATE_RESP);
+
+        strcpy(fwc->meta.partition, fwc->mpart.part.name);
+        strcpy(fwc->meta.attr, fwc->mpart.attr);
+        fwc->meta.offset = fwc->mpart.part.start;
+        fwc->meta.size = fwc->mpart.part.size;
+    }
+
+    return clen;
+}
+
+static s32 get_media_crc_cmd_read_output_data(struct upg_cmd *cmd, u8 *buf,
+                                              s32 len)
+{
+    enum upg_dev_type dev_type;
+    struct resp_header resp;
+    struct fwc_info *fwc;
+    u32 siz = 0, val = 0;
+    s32 ret = 0;
+
+    pr_debug("%s\n", __func__);
+    fwc = (struct fwc_info *)cmd->priv;
+    if (fwc == NULL)
+        return 0;
+
+    if (cmd->state == CMD_STATE_START)
+        cmd_state_set_next(cmd, CMD_STATE_RESP);
+
+    if (cmd->state == CMD_STATE_RESP) {
+        dev_type = get_media_type(fwc);
+        set_current_device_type(dev_type);
+        pr_info("    Media: %s(%d)\n", get_current_device_name(dev_type),
+                dev_type);
+
+        switch (dev_type) {
+#if defined(AICUPG_MMC_ARTINCHIP)
+            case UPG_DEV_TYPE_MMC:
+                ret = mmc_fwc_prepare(fwc, 0);
+                if (ret == 0)
+                    mmc_fwc_start(fwc);
+                break;
+#endif
+#if defined(AICUPG_NAND_ARTINCHIP)
+            case UPG_DEV_TYPE_RAW_NAND:
+            case UPG_DEV_TYPE_SPI_NAND:
+                ret = nand_fwc_prepare(fwc, 0);
+                if (ret == 0)
+                    nand_fwc_start(fwc);
+                break;
+#endif
+#if defined(AICUPG_NOR_ARTINCHIP)
+            case UPG_DEV_TYPE_SPI_NOR:
+                ret = nor_fwc_prepare(fwc, 0);
+                if (ret == 0)
+                    nor_fwc_start(fwc);
+                break;
+#endif
+            case UPG_DEV_TYPE_RAM:
+            case UPG_DEV_TYPE_UNKNOWN:
+            default:
+                pr_err("Media cannot be read back for a CRC.\n");
+                ret = -1;
+                break;
+        }
+
+        /* The *_fwc_start() family reports failure by leaving priv NULL. */
+        if (ret == 0 && fwc->priv == NULL) {
+            pr_err("Partition '%s' not found.\n", fwc->meta.partition);
+            ret = -1;
+        }
+        if (ret == 0)
+            ret = fwc_media_crc(fwc);
+
+        /*
+         * The answer is always a header plus a 4 byte CRC, so a failed
+         * request still completes the transfer the host expects.
+         */
+        aicupg_gen_resp(&resp, cmd->cmd, ret ? UPG_RESP_FAIL : UPG_RESP_OK, 4);
+        siz = sizeof(struct resp_header);
+        memcpy(buf, &resp, siz);
+        cmd_state_set_next(cmd, CMD_STATE_DATA_OUT);
+    }
+    if (siz == len)
+        return siz;
+
+    if (cmd->state == CMD_STATE_DATA_OUT) {
+        val = fwc->calc_partition_crc;
+        memcpy(buf, &val, 4);
+        siz += 4;
+        cmd_state_set_next(cmd, CMD_STATE_END);
+    }
+    return siz;
+}
+
+static void get_media_crc_cmd_end(struct upg_cmd *cmd)
+{
+    enum upg_dev_type dev_type;
+    struct fwc_info *fwc;
+
+    fwc = (struct fwc_info *)cmd->priv;
+    (void)fwc;
+
+    pr_debug("%s\n", __func__);
+    if (cmd->state == CMD_STATE_END) {
+        dev_type = get_current_device_type();
+        switch (dev_type) {
+#if defined(AICUPG_MMC_ARTINCHIP)
+            case UPG_DEV_TYPE_MMC:
+                mmc_fwc_data_end(fwc);
+                break;
+#endif
+#if defined(AICUPG_NAND_ARTINCHIP)
+            case UPG_DEV_TYPE_RAW_NAND:
+            case UPG_DEV_TYPE_SPI_NAND:
+                nand_fwc_data_end(fwc);
+                break;
+#endif
+#if defined(AICUPG_NOR_ARTINCHIP)
+            case UPG_DEV_TYPE_SPI_NOR:
+                nor_fwc_data_end(fwc);
+                break;
+#endif
+            case UPG_DEV_TYPE_RAM:
+            case UPG_DEV_TYPE_UNKNOWN:
+            default:
+                break;
+        }
+        cmd->priv = 0;
+        cmd_state_set_next(cmd, CMD_STATE_IDLE);
+    }
+}
+
+/*
  * UPG_PROTO_CMD_SET_UART_ARGS:
  *   -> [CMD HEADER]
  *   <- [RESP HEADER]
@@ -1538,6 +1789,13 @@ static struct upg_cmd fwc_cmd_list[] = {
         read_fwc_data_cmd_write_input_data,
         read_fwc_data_cmd_read_output_data,
         read_fwc_data_cmd_end,
+    },
+    {
+        UPG_PROTO_CMD_GET_MEDIA_CRC,
+        get_media_crc_cmd_start,
+        get_media_crc_cmd_write_input_data,
+        get_media_crc_cmd_read_output_data,
+        get_media_crc_cmd_end,
     },
     {
         UPG_PROTO_CMD_SET_UART_ARGS,

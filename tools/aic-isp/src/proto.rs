@@ -52,6 +52,7 @@ pub mod cmd {
     pub const GET_PARTITION_TABLE: u8 = 0x17;
     pub const READ_FWC_DATA: u8 = 0x18;
     pub const SET_UART_ARGS: u8 = 0x19;
+    pub const GET_MEDIA_CRC: u8 = 0x1C;
 }
 
 /// CBW/CSW signatures and flags (data_trans_layer.h).

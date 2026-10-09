@@ -69,6 +69,19 @@ enum Item {
     Hex { path: PathBuf },
 }
 
+/// How a programmed partition is checked (only for flash, not for --ram).
+#[derive(Clone, Copy)]
+enum Verify {
+    /// No check.
+    Off,
+    /// GET_MEDIA_CRC: the device computes the CRC32 of the partition content,
+    /// 4 bytes travel the wire instead of the whole image.
+    Crc,
+    /// READ_FWC_DATA: the programmed range is read back and compared byte by
+    /// byte, which also reports the first differing offset.
+    Readback,
+}
+
 struct Opts {
     port: Option<String>,
     /// Download speed: after connecting at DEFAULT_BAUD, the device is asked
@@ -77,7 +90,7 @@ struct Opts {
     items: Vec<Item>,
     exec: Option<u32>,
     ram: bool,
-    verify: bool,
+    verify: Verify,
     reset: bool,
     verbose: bool,
 }
@@ -95,7 +108,7 @@ fn parse_args(args: &[String]) -> Result<Action, String> {
         items: Vec::new(),
         exec: None,
         ram: false,
-        verify: false,
+        verify: Verify::Off,
         reset: false,
         verbose: false,
     };
@@ -137,7 +150,17 @@ fn parse_args(args: &[String]) -> Result<Action, String> {
             }
             "--exec" => opts.exec = Some(parse_u32(&value(&mut idx)?)?),
             "--ram" => opts.ram = true,
-            "--verify" => opts.verify = true,
+            "--verify" => {
+                opts.verify = match inline.as_deref() {
+                    None => Verify::Crc,
+                    Some("readback") => Verify::Readback,
+                    Some(other) => {
+                        return Err(format!(
+                            "--verify expects no value or 'readback', got '{other}'"
+                        ))
+                    }
+                };
+            }
             "--reset" => opts.reset = true,
             other if other.starts_with('-') => {
                 return Err(format!("unknown option '{other}'"));
@@ -200,7 +223,11 @@ OPTIONS:
                          contains. May be given several times.
         --ram            Load --bin/--hex into RAM instead of programming the
                          flash; with it ADDR is a RAM address
-        --verify         Read the programmed data back and compare it
+        --verify         Compare the CRC32 of the programmed partition content
+                         against the file, without reading the data back
+        --verify=readback
+                         Read the programmed data back and compare it byte by
+                         byte instead, reporting the first differing offset
         --reset          Reboot the board once everything is done, so the
                          bootloader starts the application it just got
                          (release the download key before the reset)
@@ -212,7 +239,7 @@ OPTIONS:
 EXAMPLES:
     aic-isp -p COM7 --bin bootloader.bin@0                # into the spl partition
     aic-isp -p COM7 --bin d12x_os.itb@0x100000 --reset    # program and boot it
-    aic-isp -p COM7 --verify --bin data.fatfs@0x400000    # and read it back
+    aic-isp -p COM7 --verify --bin data.fatfs@0x400000    # and check the CRC
     aic-isp -p COM7 --ram --bin app.bin@0x40000000 --exec 0x40000000
 
 Without --bin/--hex/--exec the tool only connects and prints the device
@@ -455,7 +482,7 @@ fn program(
     partition: &fwc::FlashPartition,
     index: usize,
     count: usize,
-    verify: bool,
+    verify: Verify,
 ) -> Result<(), String> {
     println!();
     println!(
@@ -485,22 +512,31 @@ fn program(
         rate(total, elapsed)
     );
 
-    if verify {
-        print!("        verifying ... ");
-        io::stdout().flush().ok();
-        let read_back = dev.read_flash(partition.start, total)?;
-        if read_back != job.data {
-            let at = read_back
-                .iter()
-                .zip(job.data.iter())
-                .position(|(a, b)| a != b)
-                .unwrap_or(0);
-            return Err(format!(
-                "verification failed: partition '{}' differs from {} at offset 0x{at:X}",
-                partition.name, job.label
-            ));
+    match verify {
+        Verify::Off => {}
+        Verify::Crc => {
+            print!("        verifying ... ");
+            io::stdout().flush().ok();
+            dev.verify_flash(partition.start, &job.data)?;
+            println!("ok");
         }
-        println!("ok");
+        Verify::Readback => {
+            print!("        verifying ... ");
+            io::stdout().flush().ok();
+            let read_back = dev.read_flash(partition.start, total)?;
+            if read_back != job.data {
+                let at = read_back
+                    .iter()
+                    .zip(job.data.iter())
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(0);
+                return Err(format!(
+                    "verification failed: partition '{}' differs from {} at offset 0x{at:X}",
+                    partition.name, job.label
+                ));
+            }
+            println!("ok");
+        }
     }
 
     Ok(())
