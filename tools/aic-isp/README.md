@@ -11,7 +11,7 @@
 - `--ram`：把文件下载到内存（RAM）而不是 flash，可配合 `--exec` 直接运行
 - `--bin <FILE@ADDR>`：裸二进制 + flash 偏移（必须是某个分区的起始地址）
 - `--hex <FILE>`：Intel HEX 文件，按其记录中的地址烧写（连续记录会合并成一段）
-- 支持多个文件，按命令行顺序依次处理；`--isp-baud` 可在连接后把设备与串口切到更高波特率
+- 支持多个文件，按命令行顺序依次处理；连接固定用 115200，`-b/--baud` 可在连接后把设备与串口切到更高波特率
 - 不带任何文件时只连接设备，打印芯片信息与分区表
 
 ## 编译
@@ -37,7 +37,7 @@ cp target/release/aic-isp bin/   # 更新 bin/ 下的预编译产物
 aic-isp -p COM7 --bin bootloader.aic@0x0
 
 # 烧写应用镜像（os 分区，偏移 0x100000），并用 3 Mbps 提速
-aic-isp -p COM7 --isp-baud 3000000 --bin d12x_os.itb@0x100000
+aic-isp -p COM7 -b 3000000 --bin d12x_os.itb@0x100000
 
 # 烧写后读回校验
 aic-isp -p COM7 --verify --bin data.fatfs@0x400000
@@ -55,8 +55,7 @@ aic-isp -p COM7 --ram --bin app.bin@0x40000000 --exec 0x40000000
 | 参数 | 说明 |
 | --- | --- |
 | `-p, --port <PORT>` | 串口设备名，如 `COM7`、`/dev/ttyUSB0`；只有一个串口时可省略 |
-| `-b, --baud <BAUD>` | 连接 BootLoader 用的波特率，默认 `115200`，需与它一致 |
-| `--isp-baud <BAUD>` | 连上之后通过 `SET_UART_ARGS` 命令让设备切到该波特率，双方按新速率继续传输（如 `3000000`）；切换失败会退回原速率并报错 |
+| `-b, --baud <BAUD>` | 连接固定用 `115200`；连上之后通过 `SET_UART_ARGS` 命令让设备切到该波特率，双方按新速率继续传输（如 `3000000`）；切换失败会退回 115200 并报错。默认 `115200`，即全程不切换 |
 | `--bin <FILE@ADDR>` | 裸二进制与 flash 偏移（分区起始地址），如 `bootloader.aic@0x0` |
 | `--hex <FILE>` | Intel HEX 文件，地址取自文件内容（按 flash 偏移处理） |
 | `--ram` | 把 `--bin`/`--hex` 载入内存，此时地址是 RAM 地址 |

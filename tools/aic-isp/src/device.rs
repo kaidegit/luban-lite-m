@@ -99,7 +99,7 @@ impl<L: Link> Device<L> {
             if Instant::now() >= deadline {
                 return Err(
                     "no answer from the bootloader; make sure the board is in download mode \
-                     (hold the download key while powering on) and that port and baud rate match"
+                     (hold the download key while powering on) and that the port is correct"
                         .to_string(),
                 );
             }

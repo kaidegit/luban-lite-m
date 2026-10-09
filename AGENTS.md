@@ -42,7 +42,7 @@ cd tools/aic-isp && cargo build --release && cp target/release/aic-isp bin/
 
 # 烧到分区起始地址（spl@0x0、os@0x100000、data@0x400000 ...），--verify 可回读校验
 ./bin/aic-isp -p COM7 --bin bootloader.aic@0x0
-./bin/aic-isp -p COM7 --isp-baud 3000000 --verify --bin d12x_os.itb@0x100000
+./bin/aic-isp -p COM7 -b 3000000 --verify --bin d12x_os.itb@0x100000
 
 # 烧完自动复位启动新固件（复位前松开下载键），或载入内存并执行
 ./bin/aic-isp -p COM7 --reset --bin d12x_os.itb@0x100000

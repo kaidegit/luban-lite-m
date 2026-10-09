@@ -26,6 +26,8 @@ use hexfile::HexImage;
 use transport::Transport;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The bootloader handshake always runs at this fixed speed; --baud only
+/// switches to a faster download rate once the connection is up.
 const DEFAULT_BAUD: u32 = 115200;
 /// How long we wait for a board that is still powering up.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -69,8 +71,9 @@ enum Item {
 
 struct Opts {
     port: Option<String>,
+    /// Download speed: after connecting at DEFAULT_BAUD, the device is asked
+    /// to switch here and the transfer continues at that rate.
     baud: u32,
-    isp_baud: Option<u32>,
     items: Vec<Item>,
     exec: Option<u32>,
     ram: bool,
@@ -89,7 +92,6 @@ fn parse_args(args: &[String]) -> Result<Action, String> {
     let mut opts = Opts {
         port: None,
         baud: DEFAULT_BAUD,
-        isp_baud: None,
         items: Vec::new(),
         exec: None,
         ram: false,
@@ -120,7 +122,6 @@ fn parse_args(args: &[String]) -> Result<Action, String> {
             "-v" | "--verbose" => opts.verbose = true,
             "-p" | "--port" => opts.port = Some(value(&mut idx)?),
             "-b" | "--baud" => opts.baud = parse_u32(&value(&mut idx)?)?,
-            "--isp-baud" => opts.isp_baud = Some(parse_u32(&value(&mut idx)?)?),
             "--bin" => {
                 let (path, addr) = parse_bin_spec(&value(&mut idx)?)?;
                 opts.items.push(Item::Bin { path, addr });
@@ -187,11 +188,10 @@ USAGE:
 
 OPTIONS:
     -p, --port <PORT>    Serial port of the board, e.g. COM7 or /dev/ttyUSB0
-    -b, --baud <BAUD>    Baud rate used to reach the bootloader
+    -b, --baud <BAUD>    The tool always connects at {DEFAULT_BAUD} bps; after the
+                         handshake it asks the device to switch to BAUD and
+                         continues the download at that speed, e.g. 3000000
                          [default: {DEFAULT_BAUD}]
-        --isp-baud <BAUD>
-                         After connecting, ask the device to switch to BAUD and
-                         continue the download at that speed, e.g. 3000000
         --bin <FILE@ADDR>
                          Raw binary plus the flash offset (the start of a
                          partition) it is programmed to, e.g.
@@ -300,9 +300,9 @@ fn run(opts: Opts) -> Result<(), String> {
 
     println!("aic-isp {VERSION} - UART ISP tool for the ArtInChip bootloader");
     println!();
-    println!("port    : {port_name} @ {} bps", opts.baud);
-    if let Some(baud) = opts.isp_baud {
-        println!("          switch to {baud} bps for the download");
+    println!("port    : {port_name} @ {DEFAULT_BAUD} bps");
+    if opts.baud != DEFAULT_BAUD {
+        println!("          switch to {} bps for the download", opts.baud);
     }
     println!(
         "mode    : {}",
@@ -322,7 +322,7 @@ fn run(opts: Opts) -> Result<(), String> {
     }
 
     let started = Instant::now();
-    let transport = Transport::open(&port_name, opts.baud)?;
+    let transport = Transport::open(&port_name, DEFAULT_BAUD)?;
     print!("probing : waiting for the bootloader in download mode ... ");
     io::stdout().flush().ok();
     let mut dev = Device::connect(transport, PROBE_TIMEOUT, opts.verbose)?;
@@ -331,20 +331,18 @@ fn run(opts: Opts) -> Result<(), String> {
     let info = dev.hwinfo()?;
     print_device(&info);
 
-    if let Some(baud) = opts.isp_baud {
-        if baud != opts.baud {
-            print!("baud    : switching the device to {baud} bps ... ");
-            io::stdout().flush().ok();
-            dev.set_uart_baudrate(baud)?;
-            if let Err(e) = dev.hwinfo() {
-                // The device may have kept the old speed, go back to it so
-                // the failure is reported instead of losing the session.
-                let _ = dev.set_link_baudrate(opts.baud);
-                println!("failed");
-                return Err(format!("the device did not answer at {baud} bps: {e}"));
-            }
-            println!("ok");
+    if opts.baud != DEFAULT_BAUD {
+        print!("baud    : switching the device to {} bps ... ", opts.baud);
+        io::stdout().flush().ok();
+        dev.set_uart_baudrate(opts.baud)?;
+        if let Err(e) = dev.hwinfo() {
+            // The device may have kept the old speed, go back to it so
+            // the failure is reported instead of losing the session.
+            let _ = dev.set_link_baudrate(DEFAULT_BAUD);
+            println!("failed");
+            return Err(format!("the device did not answer at {} bps: {e}", opts.baud));
         }
+        println!("ok");
     }
 
     if opts.ram {
