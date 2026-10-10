@@ -84,6 +84,14 @@ if GetDepend('TLSF_MEM_HEAP'):
         src += Glob('drv_bare/tlsf_heap/*.c')
         CPPPATH.append(cwd + '/drv_bare/tlsf_heap/')
 
+# RT-Thread system heap over the same TLSF allocator (RT_USING_USERHEAP).
+# Only tlsf.c is shared; the baremetal region setup in aic_tlsf.c does not
+# apply to RT-Thread builds.
+if GetDepend('RT_USING_USERHEAP'):
+    src += Glob('drv/mem/rt_tlsf_heap.c')
+    src += Glob('drv_bare/tlsf_heap/tlsf.c')
+    CPPPATH.append(cwd + '/include/drv_bare')
+
 # I2C driver
 if GetDepend('AIC_I2C_DRV'):
     if GetDepend('DRIVER_DRV_EN'):

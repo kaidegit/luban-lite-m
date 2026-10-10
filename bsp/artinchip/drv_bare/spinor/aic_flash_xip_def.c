@@ -504,6 +504,37 @@ static struct xip_device xip_flashs[] = {
                 },
         },
     }, //.name = "ZD25Q64B",
+    {
+        // Puya PY25Q128HA on the d12x demo68-nor board; command set follows
+        // the GD25Q128E template (QIO EBh + 0x77 wrap, 3-byte address)
+        .name = "PY25Q128HA",
+        .flash_id = 0x852018,
+        .proto_support = CMD_PROTO_QIO|CMD_PROTO_CACHE_EN|CMD_PROTO_CACHE_DIS,
+        .burst_cfg = {
+                .cmd_set_burst = 0x77,
+                .cmd_dummy_byte = 3,
+                .cmd_bits_width = XIP_C0_BITS_WIDTH_4,
+                .wrap_en = XIP_BURST_WRAPPED_WITH_FIXED_LEN,
+                .wrap = {
+                        .fixed_len = 0x40,
+                        .disable = 0x10,
+                        .auto_wl64 = 0x60,
+                        .auto_wl32 = 0x40,
+                        .auto_wl16 = 0x20,
+                        .auto_wl8 = 0x00,
+                },
+        },
+        .read_cfg = {
+                .read_cmd = 0xEB,
+                .dummy_byte = 2,
+                .addr_mode = SPINOR_ADDR_MODE_3BYTE,
+                .read_cmd_bypass_en = 0,
+                .mode = {
+                        .bypass = 0x20,
+                        .normal = 0x00,
+                },
+        },
+    }, //.name = "PY25Q128HA",
 };
 
 struct xip_device *get_xip_device_cfg(u32 flash_id, u32 support_msk, u32 support_val)

@@ -7,8 +7,9 @@
             "env_r":      { "size": "128k" },
             "userid":     { "size": "256k" }, // at least 16KB
             "os":         { "size": "3072k" },
-            "os_r":       { "size": "3072k" },
-            "data":       { "size": "9216k" } // spare RW partition, unused by PocketJS
+            "os_r":       { "size": "3072k" }
+            // spare tail (9216k) is unmapped; the former "data" RW partition
+            // was never used by PocketJS and XIP needs no extra flash
         },
     },
     "image": {
