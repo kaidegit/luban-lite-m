@@ -6,26 +6,28 @@ from building import *
 cwd = GetCurrentDir()
 src = Glob('*.c')
 CPPPATH = []
+LOCAL_CPPPATH = []
 wifi_name = ''
 
-CPPPATH.append(cwd + '/../../../../kernel/freertos/include/')
-CPPPATH.append(cwd + '/../../../../packages/third-party/lwip/src/include/')
-CPPPATH.append(cwd + '/../../../../packages/third-party/lwip/')
-CPPPATH.append(cwd + '/../../../../packages/third-party/lwip/contrib/ports/rt-thread/include')
-CPPPATH.append(cwd + '/include/')
-CPPPATH.append(cwd + '/api/')
-CPPPATH.append(cwd + '/os/customer_rtos/')
-CPPPATH.append(cwd + '/os/os_dep/include/')
-CPPPATH.append(cwd + '/platform/include/')
-CPPPATH.append(cwd + '/platform/rtwlan_bsp/')
+LOCAL_CPPPATH.append(cwd + '/../../../../kernel/freertos/include/')
+CPPPATH.append(cwd + '/os/wlan_lwip/')
+LOCAL_CPPPATH.append(cwd + '/../../../../packages/third-party/lwip/src/include/')
+LOCAL_CPPPATH.append(cwd + '/../../../../packages/third-party/lwip/')
+LOCAL_CPPPATH.append(cwd + '/../../../../packages/third-party/lwip/contrib/ports/rt-thread/include')
+LOCAL_CPPPATH.append(cwd + '/include/')
+LOCAL_CPPPATH.append(cwd + '/api/')
+LOCAL_CPPPATH.append(cwd + '/os/customer_rtos/')
+LOCAL_CPPPATH.append(cwd + '/os/os_dep/include/')
+LOCAL_CPPPATH.append(cwd + '/platform/include/')
+LOCAL_CPPPATH.append(cwd + '/platform/rtwlan_bsp/')
 
 if GetDepend('REALTEK_FULL_FNC_MODE'):
-    CPPPATH.append(cwd + '/api/wifi/rtw_wpa_supplicant/src/')
-    CPPPATH.append(cwd + '/api/wifi/rtw_wpa_supplicant/wpa_supplicant/')
+    LOCAL_CPPPATH.append(cwd + '/api/wifi/rtw_wpa_supplicant/src/')
+    LOCAL_CPPPATH.append(cwd + '/api/wifi/rtw_wpa_supplicant/wpa_supplicant/')
 
 if GetDepend('REALTEK_WLAN_INTF_SDIO'):
-    CPPPATH.append(cwd + '/platform/sdio/include/')
-    CPPPATH.append(cwd + '/platform/sdio/')
+    LOCAL_CPPPATH.append(cwd + '/platform/sdio/include/')
+    LOCAL_CPPPATH.append(cwd + '/platform/sdio/')
 
 src += Glob('api/*.c')
 src += Glob('api/wifi/*.c')
@@ -39,12 +41,12 @@ src += Glob('os/os_dep/*.c')
 # Third-party packages LwIP using wlan_lwip/*
 if GetDepend('LPKG_USING_LWIP') or GetDepend('RT_USING_LWIP'):
     src += Glob('os/wlan_lwip/*.c')
-    CPPPATH.append(cwd + '/os/wlan_lwip/')
+    LOCAL_CPPPATH.append(cwd + '/os/wlan_lwip/')
 
 # RT-thread LwIP using adapt_to_rtt/*
 if GetDepend('RT_USING_LWIP'):
     src += Glob('os/adapt_to_rtt/*.c')
-    CPPPATH.append(cwd + '/os/adapt_to_rtt/')
+    LOCAL_CPPPATH.append(cwd + '/os/adapt_to_rtt/')
 
 src += Glob('platform/rtwlan_bsp/*.c')
 if GetDepend('REALTEK_WLAN_INTF_SDIO'):
@@ -69,6 +71,6 @@ LIBPATH = [cwd + "/wlan_lib/"]
 
 myccflags = (' -w')
 
-group = DefineGroup(wifi_name, src, depend = ['AIC_WLAN_REALTEK'], CPPPATH = CPPPATH, LIBS=LIBS, LIBPATH=LIBPATH, LOCAL_CFLAGS=myccflags)
+group = DefineGroup(wifi_name, src, depend = ['AIC_WLAN_REALTEK'], CPPPATH = CPPPATH, LOCAL_CPPPATH = LOCAL_CPPPATH, LIBS=LIBS, LIBPATH=LIBPATH, LOCAL_CFLAGS=myccflags)
 
 Return('group')

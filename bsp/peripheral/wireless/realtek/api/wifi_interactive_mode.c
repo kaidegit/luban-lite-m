@@ -1652,12 +1652,18 @@ void start_interactive_mode(void)
 void wlan(int argc, char **argv)
 {
 	int i = 0;
+
+	if (argc < 2) {
+		cmd_help(0, NULL);
+		return;
+	}
 	for (i = 0; i < sizeof(cmd_table) / sizeof(cmd_table[0]); i++) {
 		if (!strcmp(cmd_table[i].command, argv[1])) {
 			cmd_table[i].function(argc-1, &argv[1]);
-			break;
+			return;
 		}
 	}
+	pr_info("unknown command '%s', try 'wlan help'\n", argv[1]);
 }
 MSH_CMD_EXPORT(wlan, wlan "wifi_cmd" [para]);
 

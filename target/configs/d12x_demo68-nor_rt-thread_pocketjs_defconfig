@@ -78,6 +78,32 @@ CONFIG_PM_USING_CUSTOM_CONFIG=y
 CONFIG_PM_ENABLE_SUSPEND_SLEEP_MODE=y
 CONFIG_PM_ENABLE_THRESHOLD_SLEEP_MODE=y
 CONFIG_RT_MMCSD_STACK_SIZE=8192
+# WiFi: RTL8189FTV module on SDMC0 (PB.6-PB.11). Module EN is hardware-
+# disconnected from the SoC (assumed tied/powered on the carrier), so no
+# firmware power control: AIC_WIRELESS_PWR_GPIO stays empty — general_wireless
+# pin/pm glue only prints a "pwr pin not configured" warning and does nothing.
+# Per doc/topics/sdk/peripheral/wifi_rtl8189.html the Realtek glue feeds
+# the third-party lwIP package (os/wlan_lwip ethernetif, netif "WL0"), NOT
+# the RT-Thread wlan framework — no RT_USING_WIFI / RT_USING_LWIP here.
+# AIC_WLAN_REALTEK links closed libwlan_rtl8189_e907f.a (CPUNAME=e907f),
+# firmware download embedded; LPKG lwIP defaults bring DHCP/DNS/ping and
+# the nettools dhcpc/ifconfig commands.
+# CONFIG_AIC_USING_SDMC1 is not set
+CONFIG_AIC_USING_SDMC0=y
+CONFIG_AIC_SDMC0_IS_SDIO=y
+CONFIG_AIC_SDMC0_CLK_FREQ=40000000
+CONFIG_AIC_WIRELESS_LAN=y
+CONFIG_AIC_WIFI_SDMC_ID=0
+CONFIG_AIC_WIRELESS_PWR_GPIO=""
+CONFIG_AIC_WLAN_REALTEK=y
+CONFIG_AIC_USING_RTL8189_WLAN0=y
+# CONFIG_AIC_USING_RTL8733_WLAN0 is not set
+CONFIG_LPKG_USING_LWIP=y
+CONFIG_RT_SDIO_STACK_SIZE=4096
+CONFIG_RT_SDIO_THREAD_PRIORITY=5
+# AIC_WLAN_REALTEK selects RT_USING_TIMER_SOFT; the 512B default stack is
+# too small for wlan timer callbacks (doc: 4096)
+CONFIG_RT_TIMER_THREAD_STACK_SIZE=4096
 # CONFIG_RT_SFUD_USING_QSPI is not set
 CONFIG_RT_USING_TOUCH=y
 CONFIG_RT_TOUCH_PIN_IRQ=y

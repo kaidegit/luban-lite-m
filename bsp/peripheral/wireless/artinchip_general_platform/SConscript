@@ -2,9 +2,18 @@
 from building import *
 
 cwd = GetCurrentDir()
-src = Glob('*.c')
 path = [cwd]
 
-group = DefineGroup("gpio", src, depend = ['AIC_WIRELESS_LAN'], CPPPATH = path)
+# Pin glue serves every wireless driver, including the Realtek LPKG-lwIP
+# path that runs without the RT-Thread wlan framework.
+group = DefineGroup("wireless_pin", Glob('general_wireless_pin.c'),
+                    depend = ['AIC_WIRELESS_LAN'], CPPPATH = path)
+
+# PM glue drives rt_wlan_device and only makes sense on the wlan-framework
+# path (AIC8800, where RT_USING_WIFI is on); building it for the Realtek
+# LPKG-lwIP path fails on undefined wlan types.
+group = group + DefineGroup("wireless_pm", Glob('general_wireless_pm.c'),
+                            depend = ['AIC_WIRELESS_LAN', 'RT_USING_WIFI'],
+                            CPPPATH = path)
 
 Return('group')
