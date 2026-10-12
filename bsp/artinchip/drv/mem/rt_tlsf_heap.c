@@ -303,4 +303,60 @@ void rt_memory_info(rt_size_t *total,
 }
 RTM_EXPORT(rt_memory_info);
 
+struct tlsf_walk_summary {
+    rt_size_t free_total;
+    rt_size_t largest_free;
+    rt_size_t free_blocks;
+};
+
+static void tlsf_walk_cb(void *ptr, size_t size, int used, void *user)
+{
+    struct tlsf_walk_summary *summary = user;
+    (void)ptr;
+    if (!used)
+    {
+        summary->free_total += size;
+        summary->free_blocks++;
+        if (size > summary->largest_free)
+            summary->largest_free = size;
+    }
+}
+
+/**
+ * @brief Walk the TLSF pool and summarize its free blocks: the total free
+ *        bytes, the largest contiguous free block and the free block count.
+ *
+ * Sizes are the allocator's physical block sizes (header included), so the
+ * largest request that can actually succeed is slightly below largest_free.
+ * Meant for diagnostics at safe sample points only: it takes the heap lock
+ * and walks every block.
+ *
+ * @param free_total is a pointer to get the sum of free block sizes.
+ * @param largest_free is a pointer to get the biggest contiguous free block.
+ * @param free_blocks is a pointer to get the number of free blocks.
+ */
+void rt_memory_walk(rt_size_t *free_total,
+                    rt_size_t *largest_free,
+                    rt_size_t *free_blocks)
+{
+    struct tlsf_walk_summary summary = {0, 0, 0};
+    rt_base_t level;
+
+    if (system_tlsf == RT_NULL)
+        return;
+
+    /* Enter critical zone */
+    level = _heap_lock();
+    tlsf_walk_pool(tlsf_get_pool(system_tlsf), tlsf_walk_cb, &summary);
+    /* Exit critical zone */
+    _heap_unlock(level);
+    if (free_total)
+        *free_total = summary.free_total;
+    if (largest_free)
+        *largest_free = summary.largest_free;
+    if (free_blocks)
+        *free_blocks = summary.free_blocks;
+}
+RTM_EXPORT(rt_memory_walk);
+
 #endif /* RT_USING_USERHEAP */
