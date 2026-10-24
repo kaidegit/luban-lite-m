@@ -20,7 +20,9 @@ CONFIG_AIC_USING_TSEN=y
 CONFIG_AIC_USING_TSEN_CPU=y
 CONFIG_AIC_PRGB_24BIT=y
 CONFIG_DATA_ORDER_BGR=y
-CONFIG_AIC_DEGREE_0=y
+# Match the demo68-nor RGB panel timing used by the SDK reference target.
+# A 0-degree pixel clock leaves high-contrast glyph edges prone to sampling noise.
+CONFIG_AIC_DEGREE_90=y
 CONFIG_AICFB_RGB565=y
 CONFIG_AIC_PAN_DISPLAY=y
 CONFIG_AIC_PANEL_480X272_RESOLUTION=y
